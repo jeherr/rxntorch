@@ -32,3 +32,7 @@ class RxnDataset(Dataset):
         for bin_size, ibin in self.rxn_strs.items():
             for rxn in ibin:
                 self.rxns[bin_size].append(ReactionFromSmarts(rxn[0]))
+
+    def build_features(self):
+        
+        return
