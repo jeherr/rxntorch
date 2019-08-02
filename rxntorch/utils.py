@@ -30,7 +30,7 @@ def rxn_smiles_reader(txt_file):
     for ibin in bins:
         random.shuffle(ibin)
     bins = {bin_size[i]: bins[i] for i in range(len(bin_size)) if (len(bins[i]) > 0)}
-    return
+    return bins
 
 def count(s):
     """Counts the number of heavy atoms in a reaction string."""
