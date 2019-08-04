@@ -18,3 +18,4 @@ class GCN(nn.Module):
                                     batch_size=self.batch_size,
                                     num_workers=pre_proc_threads,
                                     sampler=self.sampler)
+
