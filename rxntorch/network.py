@@ -1,20 +1,20 @@
 from __future__ import print_function
 
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.data import DataLoader
+from sampler import BinRandomSampler
 from layers import GraphConvolution
 
 
 class GCN(nn.Module):
-    def __init__(self, nfeat, nhid, nclass, dropout):
+    def __init__(self, dataset, batch_size, pre_proc_threads=1):
         super(GCN, self).__init__()
-
-        self.gc1 = GraphConvolution(nfeat, nhid)
-        self.gc2 = GraphConvolution(nhid, nclass)
-        self.dropout = dropout
-
-    def forward(self, x, adj):
-        x = F.relu(self.gc1(x, adj))
-        x = F.dropout(x, self.dropout, training=self.training)
-        x = self.gc2(x, adj)
-        return F.log_softmax(x, dim=1)
+        self.dataset = dataset
+        self.batch_size = batch_size
+        self.sampler = BinRandomSampler(self.dataset.bins, self.batch_size)
+        self.data_loader = DataLoader(self.dataset,
+                                    batch_size=self.batch_size,
+                                    num_workers=pre_proc_threads,
+                                    sampler=self.sampler)

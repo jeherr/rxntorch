@@ -1,6 +1,14 @@
 from __future__ import print_function
 
 import random
+import numpy as np
+
+import rdkit.Chem as Chem
+
+elem_list = ['C', 'N', 'O', 'S', 'F', 'Si', 'P', 'Cl', 'Br', 'Mg', 'Na', 'Ca', 'Fe', 'As', 'Al', 'I', 'B', 'V', 'K', 'Tl', 'Yb', 'Sb', 'Sn', 'Ag', 'Pd', 'Co', 'Se', 'Ti', 'Zn', 'H', 'Li', 'Ge', 'Cu', 'Au', 'Ni', 'Cd', 'In', 'Mn', 'Zr', 'Cr', 'Pt', 'Hg', 'Pb', 'W', 'Ru', 'Nb', 'Re', 'Te', 'Rh', 'Tc', 'Ba', 'Bi', 'Hf', 'Mo', 'U', 'Sm', 'Os', 'Ir', 'Ce','Gd','Ga','Cs', 'unknown']
+atom_fdim = len(elem_list) + 6 + 6 + 6 + 1
+bond_fdim = 6
+max_nb = 10
 
 def rxn_smiles_reader(txt_file):
     """Loads txt from a files containing reaction SMILES.
@@ -18,19 +26,21 @@ def rxn_smiles_reader(txt_file):
     """
     bin_size = [10,20,30,40,50,60,80,100,120,150]
     bins = [[] for i in range(len(bin_size))]
+    rxns = []
     with open(txt_file, "r") as datafile:
-        for line in datafile:
+        for i, line in enumerate(datafile):
             r,e = line.strip("\r\n ").split()
+            rxns.append((r,e))
             c = count(r)
-            for i, size in enumerate(bin_size):
+            for j, size in enumerate(bin_size):
                 if c <= size:
-                    bins[i].append((r,e))
+                    bins[j].append(i)
                     break
 
     for ibin in bins:
         random.shuffle(ibin)
     bins = {bin_size[i]: bins[i] for i in range(len(bin_size)) if (len(bins[i]) > 0)}
-    return bins
+    return rxns, bins
 
 def count(s):
     """Counts the number of heavy atoms in a reaction string."""
@@ -40,24 +50,21 @@ def count(s):
             c += 1
     return c
 
-def get_atom_features(self, mol):
+def get_mol_features(mol):
     n_atoms = mol.GetNumAtoms()
+    n_bonds = max(mol.GetNumBonds(), 1)
+
     fatoms = np.zeros((n_atoms, atom_fdim))
+    fbonds = np.zeros((n_bonds, bond_fdim))
+    atom_nb = np.zeros((n_atoms, max_nb), dtype=np.int32)
+    bond_nb = np.zeros((n_atoms, max_nb), dtype=np.int32)
+    num_nbs = np.zeros((n_atoms,), dtype=np.int32)
 
     for atom in mol.GetAtoms():
         idx = atom.GetIdx()
         if idx >= n_atoms:
             raise Exception("idx >= n_atoms")
         fatoms[idx] = atom_features(atom)
-    return fatoms
-
-def get_bond_features(self, mol):
-    n_atoms = mol.GetNumAtoms()
-    n_bonds = max(mol.GetNumBonds(), 1)
-    fbonds = np.zeros((n_bonds, bond_fdim))
-    atom_nb = np.zeros((n_atoms, max_nb), dtype=np.int32)
-    bond_nb = np.zeros((n_atoms, max_nb), dtype=np.int32)
-    num_nbs = np.zeros((n_atoms,), dtype=np.int32)
 
     for bond in mol.GetBonds():
         a1 = bond.GetBeginAtom().GetIdx()
@@ -72,7 +79,7 @@ def get_bond_features(self, mol):
         num_nbs[a1] += 1
         num_nbs[a2] += 1
         fbonds[idx] = bond_features(bond)
-    return fbonds, atom_nb, bond_nb, num_nbs
+    return fatoms, fbonds, atom_nb, bond_nb, num_nbs
 
 def atom_features(atom):
     return np.array(onek_encoding_unk(atom.GetSymbol(), elem_list)

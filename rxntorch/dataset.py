@@ -1,38 +1,35 @@
 from __future__ import print_function
 
 from torch.utils.data import Dataset
-from rdkit.Chem.rdChemReactions import ReactionFromSmarts
+import rdkit.Chem as Chem
 
-from rxntorch.utils import rxn_smiles_reader
+from rxntorch.utils import rxn_smiles_reader, get_mol_features
 
 
 class RxnDataset(Dataset):
     """Object for containing large sets of reaction SMILES strings.
 
     Attributes:
-        file      (str): location of the file rxns were loaded from
-        rxn_strs (dict): a dictionary of reaction strings binned by the number
-                of heavy atoms.
-        rxn      (dict): a dictionary of rdkit ChemicalReactions objects,
-                binned by the number of heavy atoms.
+        file      (str): location of the file rxns are loaded from.
+        rxn_strs  (set): reaction strings of the dataset and the bonding changes.
+        bins     (dict): contains lists of indices to map rxn_strs to bin sizes
+                for mapping data into efficient batches.
+
     """
     def __init__(self, file_):
+        super(RxnDataset, self).__init__()
         self.file = file_
-        self.rxn_strs = rxn_smiles_reader(self.file)
-        self.build_rxns()
+        self.rxn_strs, self.bins = rxn_smiles_reader(self.file)
 
     def __len__(self):
-        return len(self.rxns)
+        return len(self.rxn_strs)
 
     def __getitem__(self, idx):
-        return sample
+        reactants, products = [Chem.MolFromSmiles(smiles) for smiles in self.rxn_strs[idx][0].split('>>')]
+        atom_features, bond_features, atom_nbs, bond_nbs, num_nbs = get_mol_features(reactants)
 
-    def build_rxns(self):
-        self.rxns = {bin_size: [] for bin_size in self.rxn_strs.keys()}
-        for bin_size, ibin in self.rxn_strs.items():
-            for rxn in ibin:
-                self.rxns[bin_size].append(ReactionFromSmarts(rxn[0]))
-
-    def build_features(self):
-        
-        return
+        return {'atom_features': torch.from_numpy(atom_features),
+                'bond_features': torch.from_numpy(bond_features),
+                'atom_nbs': torch.from_numpy(atom_nbs),
+                'bond_nbs': torch.from_numpy(bond_nbs),
+                'num_nbs': torch.from_numpy(num_nbs)}
