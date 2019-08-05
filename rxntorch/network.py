@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from sampler import BinRandomSampler
-from layers import GraphConvolution
+from rxntorch.layers import GraphConvolution
 
 
 class GCN(nn.Module):
@@ -18,4 +18,9 @@ class GCN(nn.Module):
                                     batch_size=self.batch_size,
                                     num_workers=pre_proc_threads,
                                     sampler=self.sampler)
+        self.gc1 = GraphConvolution()
+        self.gc2 = GraphConvolution()
+        self.gc3 = GraphConvolution()
+
+    def forward(self, x, adj):
 
