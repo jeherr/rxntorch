@@ -1,7 +1,8 @@
 import torch.nn as nn
 
 from .attention import MultiHeadedAttention
-from .utils import SublayerConnection, PositionwiseFeedForward
+from .sublayer import SublayerConnection
+from .feed_forward import PositionwiseFeedForward
 
 
 class TransformerBlock(nn.Module):
