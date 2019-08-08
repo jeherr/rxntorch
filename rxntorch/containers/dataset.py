@@ -21,6 +21,7 @@ class RxnDataset(Dataset):
         super(RxnDataset, self).__init__()
         self.file = file_
         self.rxn_smiles = rxn_smiles_reader(self.file)
+        self.reactants, self.reagents, self.products = [], [], []
 
     def __len__(self):
         return len(self.rxn_smiles)
@@ -35,12 +36,14 @@ class RxnDataset(Dataset):
             self.rxn_smiles[i] = AllChem.ReactionToSmiles(rxn)
 
     def split_rxn(self):
-        self.reactants, self.reagents, self.products = [], [], []
         for i, rxn_smile in enumerate(self.rxn_smiles):
             reactant, reagent, product = rxn_smile.split('>')
             self.reactants.append(reactant)
             self.reagents.append(reagent)
             self.products.append(product)
 
-    #def canonicalize_smiles(self):
-
+    def canonicalize_smiles(self):
+        for i in range(len(self.rxn_smiles)):
+            self.reactants[i] = Chem.MolToSmiles(Chem.MolFromSmiles(self.reactants[i]))
+            self.reagents[i] = Chem.MolToSmiles(Chem.MolFromSmiles(self.reagents[i]))
+            self.products[i] = Chem.MolToSmiles(Chem.MolFromSmiles(self.products[i]))
