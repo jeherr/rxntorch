@@ -24,23 +24,14 @@ def rxn_smiles_reader(txt_file):
         bins (dict): Dictionary of binned reaction strings by size. Keys
             are the bin size and values are lists of the reaction strings.
     """
-    bin_size = [10,20,30,40,50,60,80,100,120,150]
-    bins = [[] for i in range(len(bin_size))]
     rxns = []
     with open(txt_file, "r") as datafile:
         for i, line in enumerate(datafile):
-            r,e = line.strip("\r\n ").split()
-            rxns.append((r,e))
-            c = count(r)
-            for j, size in enumerate(bin_size):
-                if c <= size:
-                    bins[j].append(i)
-                    break
-
-    for ibin in bins:
-        random.shuffle(ibin)
-    bins = {bin_size[i]: bins[i] for i in range(len(bin_size)) if (len(bins[i]) > 0)}
-    return rxns, bins
+            if i == 0:
+                continue
+            r = line.strip("\n").split()[0]
+            rxns.append(r)
+    return rxns
 
 def count(s):
     """Counts the number of heavy atoms in a reaction string."""
