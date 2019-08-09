@@ -48,7 +48,6 @@ class RxnDataset(Dataset):
             self.products.append(product)
 
     def canonicalize_smiles(self):
-        converted = []
         new_rxn_smiles = []
         new_reactants = []
         new_reagents = []
