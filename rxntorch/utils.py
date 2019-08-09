@@ -27,8 +27,6 @@ def rxn_smiles_reader(txt_file):
     rxns = []
     with open(txt_file, "r") as datafile:
         for i, line in enumerate(datafile):
-            if i == 0:
-                continue
             r = line.strip("\n").split()[0]
             rxns.append(r)
     return rxns
