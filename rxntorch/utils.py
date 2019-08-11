@@ -90,3 +90,4 @@ def bond_features(bond):
                 bt == Chem.rdchem.BondType.AROMATIC,
                 bond.GetIsConjugated(),
                 bond.IsInRing()], dtype=np.float32)
+
