@@ -13,7 +13,7 @@ import rxntorch.smiles_parser as sp
 
 
 class RxnDataset(Dataset):
-    """Object for containing sets of reaction SMILES strings.
+    """Object for containing sets of reactions SMILES strings.
 
     Attributes:
         file      (str): location of the file rxns are loaded from.
@@ -27,13 +27,12 @@ class RxnDataset(Dataset):
         self.file_name = file_name
         rxn_smiles = rxn_smiles_reader(self.file_name)
         self.rxns = [Rxn(rxn_smile) for rxn_smile in rxn_smiles]
-        self.reactants, self.reagents, self.products = [], [], []
 
     def __len__(self):
-        return len(self.rxn_smiles)
+        return len(self.rxns)
 
     def __getitem__(self, idx):
-        return self.rxn_smiles[idx]
+        return self.rxns[idx]
 
     @property
     def rxn_smiles(self):
@@ -70,7 +69,7 @@ class RxnDataset(Dataset):
         vocab_products = {}
         error_rsmi = {}
 
-        for i in range(len(self.rxn_smiles)):
+        for i in range(len(self.rxns)):
             try:
                 reactants = self.reactants[i].split('.')
                 reagents = self.reagents[i].split('.')
@@ -120,39 +119,6 @@ class RxnDataset(Dataset):
 
         with gzip.open('data/vocab_list.pkl.gz', 'wb') as list_file:
             pickle.dump((reactants_token_list, products_token_list), list_file, 2)
-
-        #with gzip.open('data/vocab_dict.pkl.gz', 'rb') as dict_file:
-        #    vocab_reactants, vocab_products = pickle.load(dict_file)
-
-        #with gzip.open('data/vocab_list.pkl.gz', 'rb') as list_file:
-        #    reactants_token_list, products_token_list = pickle.load(list_file)
-
-        #print(len(reactants_token_list))
-        #print(reactants_token_list[:100])
-        #print(reactants_token_list[-15:])
-
-        #print('--------')
-
-        #print(len(products_token_list))
-        #print(products_token_list[:100])
-        #print(products_token_list[-15:])
-
-        #print('--------')
-        #print('--------')
-
-        #for token in reactants_token_list[3:20]:
-        #    print(token, vocab_reactants.get(token))
-
-        #print('--------')
-
-        #for token in products_token_list[3:20]:
-        #    print(token, vocab_products.get(token))
-
-        #print('--------')
-        #print('--------')
-
-        #print(sum(vocab_reactants.values()))
-        #print(sum(vocab_products.values()))
 
 
 class BinRandomSampler(Sampler):
