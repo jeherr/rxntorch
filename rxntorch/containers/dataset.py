@@ -2,12 +2,13 @@ from __future__ import print_function
 
 import random
 import gzip
+import os
 import _pickle as pickle
 
 from torch.utils.data import Dataset
 from torch.utils.data.sampler import Sampler
 
-from rxntorch import Rxn
+from .reaction import Rxn
 from rxntorch.utils import rxn_smiles_reader
 import rxntorch.smiles_parser as sp
 
@@ -22,10 +23,11 @@ class RxnDataset(Dataset):
                 for mapping data into efficient batches.
 
     """
-    def __init__(self, file_name):
+    def __init__(self, file_name, path="data/"):
         super(RxnDataset, self).__init__()
         self.file_name = file_name
-        rxn_smiles = rxn_smiles_reader(self.file_name)
+        self.path = path
+        rxn_smiles = rxn_smiles_reader(os.path.join(self.path, self.file_name))
         self.rxns = [Rxn(rxn_smile) for rxn_smile in rxn_smiles]
 
     def __len__(self):
@@ -42,8 +44,12 @@ class RxnDataset(Dataset):
     def rxn_smiles(self, rxn_smiles):
         self.rxns = [Rxn(rxn_smile) for rxn_smile in rxn_smiles]
 
-    def save_to_file(self, file_name):
-        with open(file_name, "w") as f:
+    def save_to_file(self, file_name=None, path=None):
+        if file_name == None:
+            file_name = self.file_name
+        if path == None:
+            path = self.path
+        with open(os.path.join(path, file_name), "w") as f:
             for rxn in self.rxn_smiles:
                 f.write(rxn+"\n")
 
@@ -54,6 +60,20 @@ class RxnDataset(Dataset):
     def remove_rxn_mappings(self):
         for rxn in self.rxns:
             rxn.remove_rxn_mapping()
+
+    def get_indices_bins(self):
+        #TODO This method needs finished to collect indices for each reaction into bins to separate batches by size
+        lengths = [len(rxn.reactants_smile) for rxn in self.rxns]
+        print(max(lengths))
+        print(min(lengths))
+
+    def remove_max_reactants(self, max_reactants):
+        keep_rxns = [rxn for rxn in self.rxns if len(rxn.reactants) <= max_reactants]
+        self.rxns = keep_rxns
+
+    def remove_max_products(self, max_products):
+        keep_rxns = [rxn for rxn in self.rxns if len(rxn.products) <= max_products]
+        self.rxns = keep_rxns
 
     def create_vocab(self):
         _PAD = "_PAD"
@@ -120,7 +140,10 @@ class RxnDataset(Dataset):
         with gzip.open('data/vocab_list.pkl.gz', 'wb') as list_file:
             pickle.dump((reactants_token_list, products_token_list), list_file, 2)
 
+#TODO Dataset class needs a method to bin reactions based on length of string
 
+
+#TODO This should be moved to the model class
 class BinRandomSampler(Sampler):
     """Samples elements randomly from a dictionary of bin sizes and lists
     of indices corresponding to the master list of reactions for the dataset.

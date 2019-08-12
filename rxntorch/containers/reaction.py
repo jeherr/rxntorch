@@ -1,6 +1,6 @@
 from __future__ import print_function
 
-from rxntorch import Mol
+from .molecule import Mol
 import rdkit.Chem.AllChem as AllChem
 
 class Rxn(object):

@@ -10,4 +10,4 @@ class Mol(object):
         self.smile = smile
 
     def canonicalize(self):
-        self.smile = Chem.MolToSmile(Chem.MolFromSmile(self.smile))
+        self.smile = Chem.MolToSmiles(Chem.MolFromSmiles(self.smile))
