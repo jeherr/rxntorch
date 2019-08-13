@@ -3,10 +3,10 @@ from __future__ import print_function
 import random
 import gzip
 import os
+import progressbar
 import _pickle as pickle
 
 from torch.utils.data import Dataset
-from torch.utils.data.sampler import Sampler
 
 from .reaction import Rxn
 from rxntorch.utils import rxn_smiles_reader
@@ -160,5 +160,74 @@ class RxnDataset(Dataset):
         with gzip.open(os.path.join(path, list_file), 'rb') as list_f:
             self.reactants_token_list, self.products_token_list = pickle.load(list_f)
 
+    def tokenize_data(self):
+        bar = progressbar.ProgressBar(max_value=len(self.rxns))
+        token_len = []
+        error_rsmi = {}
+
+        with gzip.open('data/training_data.pkl.gz', 'wb') as training_file:
+            for i, rxn in enumerate(self.rxns):
+                reactant_list, reagent_list, product_list = [], [], []
+                try:
+                    for mol in rxn.reactants:
+                        reactant_list += sp.parser_list(mol.smile)
+                        reactant_list += '.'
+                    for mol in rxn.reagents:
+                        reagent_list += sp.parser_list(mol.smile)
+                        reagent_list += '.'
+
+                    for mol in rxn.products:
+                        product_list += sp.parser_list(mol.smile)
+                        product_list += '.'
+
+                    reactant_list.pop()
+                    reagent_list.pop()
+                    product_list.pop()
+                    reactant_list += '>'
+                    reactant_list += reagent_list
+                    token_len.append((len(reactant_list), len(product_list)))
+
+                    pickle.dump(([self.reactant_token_list.index(r) for r in reactant_list],
+                                [self.product_token_list.index(p) for p in product_list],
+                                rxn.smile), training_file)
+                except:
+                    error_rsmi.update({i: rxn.smile})
+                bar.update(i)
+        bar.finish()
+
+        trans = list(zip(*token_len))
+        print(max(trans[0]), max(trans[1]))
+
+        print("total:", len(token_len))
+        count = [0, 0, 0, 0, 0]
+        for length in token_len:
+            if (length[0] < 150 and length[1] < 80):
+                count[3] += 1
+                if (length[0] < 90 and length[1] < 65):
+                    count[2] += 1
+                    if (length[0] < 70 and length[1] < 60):
+                        count[1] += 1
+                        if (length[0] < 54 and length[1] < 54):
+                            count[0] += 1
+        print("cut:", count)
+
+        count = 0
+        with gzip.open('data/training_data.pkl.gz', 'rb') as data_file:
+            with gzip.open('data/train.pkl.gz', 'wb') as train_file:
+                with gzip.open('data/dev.pkl.gz', 'wb') as dev_file:
+                    i = 1
+                    while 1:
+                        try:
+                            reactants, products, _ = pickle.load(data_file)
+                            if i % 100:
+                                pickle.dump((reactants, products), train_file)
+                            else:
+                                pickle.dump((reactants, products), dev_file)
+                                count += 1
+                        except EOFError:
+                            break
+                        i += 1
+
+        print(count, len(token_len) - count)
 
 #TODO Dataset class needs a method to bin reactions based on length of string
