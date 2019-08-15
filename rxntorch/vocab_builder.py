@@ -1,44 +1,43 @@
-from tqdm import tqdm
+import tqdm
 
 from collections import Counter
-from multiprocessing import Pool
+import multiprocessing as mp
 from rxntorch.containers.dataset import RxnDataset as rxnd
-
-dataset = rxnd("2001_Sep2016_USPTO_applications_smiles_canonical.dat", path="data/USPTO/")
-n = len(dataset)
-pbar=tqdm(total=n)
-result = [None]*n
-rxn_smiles = dataset.rxn_smiles
+from rxntorch import smiles_parser as sp
 
 
-def build_rxn_vocab(i):
-    smile = rxn_smiles[i]
-    symbols = []
-    reactants, reagents, products = smile.split('>')
-    reactants, reagents, products = reactants.split('.'), reagents.split('.'), products.split('.')
+def build_rxn_vocab(smile):
+    try:
+        symbols = []
+        reactants, reagents, products = smile.split('>')
+        reactants, reagents, products = reactants.split('.'), reagents.split('.'), products.split('.')
 
-    for reactant in reactants:
-        symbols += sp.parser_list(reactant)
-    for reagent in reagents:
-        symbols += sp.parser_list(reagent)
-    for product in products:
-        symbols += sp.parser_list(product)
-    symbols += ['.'] * (len(reactants) + len(reagents) + len(products) - 3)
-    symbols += ['>']
-    return i, symbols
+        for reactant in reactants:
+            symbols += sp.parser_list(reactant)
+        for reagent in reagents:
+            symbols += sp.parser_list(reagent)
+        for product in products:
+            symbols += sp.parser_list(product)
+        symbols += ['.'] * (len(reactants) + len(reagents) + len(products) - 3)
+        symbols += ['>']
+        return symbols
+    except:
+       return smile 
 
 
-def update(i, symbols):
-    result[i] = symbols
-    pbar.update()
-
-pool = Pool(processes=8)
-for i in range(n):
-    pool.apply_async(build_rxn_vocab, args=(i,), callback=update)
-pool.close()
-pool.join()
-pbar.close()
-#counter = result[0]
-#for i in range(1, 8):
-#    counter.update(result[i])
+if __name__ == '__main__':
+	dataset = rxnd("2001_Sep2016_USPTO_applications_smiles_canonical.dat", path="data/USPTO/")
+	n = len(dataset)
+	rxn_smiles = dataset.rxn_smiles
+	pool = mp.Pool(mp.cpu_count())
+	result = list(tqdm.tqdm(pool.imap(build_rxn_vocab, rxn_smiles), total=n))
+	pool.close()
+	pool.join()
+	counter = Counter()
+	for item in result:
+		if type(item) == str:
+			continue
+		for symbol in item:
+			counter[symbol] += 1
+	print(counter['C'])
 
