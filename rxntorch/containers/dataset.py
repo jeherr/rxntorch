@@ -216,7 +216,7 @@ class RxnDataset(Dataset):
             with gzip.open('data/train.pkl.gz', 'wb') as train_file:
                 with gzip.open('data/dev.pkl.gz', 'wb') as dev_file:
                     i = 1
-                    while 1:
+                    while True:
                         try:
                             reactants, products, _ = pickle.load(data_file)
                             if i % 100:

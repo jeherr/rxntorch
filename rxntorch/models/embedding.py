@@ -36,7 +36,6 @@ class TokenEmbedding(nn.Embedding):
 
 
 class PositionalEmbedding(nn.Module):
-
     def __init__(self, model_dim, max_len=512):
         super().__init__()
 

@@ -1,9 +1,14 @@
 from __future__ import print_function
 
 import random
+import tqdm
 import numpy as np
+from collections import Counter
+from multiprocessing import Pool
+import _pickle as pickle
 
 import rdkit.Chem as Chem
+import rxntorch.smiles_parser as sp
 
 elem_list = ['C', 'N', 'O', 'S', 'F', 'Si', 'P', 'Cl', 'Br', 'Mg', 'Na', 'Ca', 'Fe', 'As', 'Al', 'I', 'B', 'V', 'K', 'Tl', 'Yb', 'Sb', 'Sn', 'Ag', 'Pd', 'Co', 'Se', 'Ti', 'Zn', 'H', 'Li', 'Ge', 'Cu', 'Au', 'Ni', 'Cd', 'In', 'Mn', 'Zr', 'Cr', 'Pt', 'Hg', 'Pb', 'W', 'Ru', 'Nb', 'Re', 'Te', 'Rh', 'Tc', 'Ba', 'Bi', 'Hf', 'Mo', 'U', 'Sm', 'Os', 'Ir', 'Ce','Gd','Ga','Cs', 'unknown']
 atom_fdim = len(elem_list) + 6 + 6 + 6 + 1
@@ -90,4 +95,40 @@ def bond_features(bond):
                 bt == Chem.rdchem.BondType.AROMATIC,
                 bond.GetIsConjugated(),
                 bond.IsInRing()], dtype=np.float32)
+
+
+#def build_vocabulary(dataset):
+#    n = len(dataset)
+#    pbar=tqdm(total=n)
+#    result = []
+#    pool = Pool(processes=8)
+#
+#    for i in range(n):
+#
+#    result = list(tqdm.tqdm(pool.imap(build_rxn_vocab, dataset.rxn_smiles), total=len(dataset)))
+#    pool.close()
+#    pool.join()
+#    counter = result[0]
+#    for i in range(1, 8):
+#        counter.update(result[i])
+#    return counter
+#
+#
+#def build_rxn_vocab(smile):
+#    counter = Counter()
+#    reactants, reagents, products = smile.split('>')
+#    reactants, reagents, products = reactants.split('.'), reagents.split('.'), products.split('.')
+#
+#    for reactant in reactants:
+#        for symbol in sp.parser_list(reactant):
+#            counter[symbol] += 1
+#    for reagent in reagents:
+#        for symbol in sp.parser_list(reagent):
+#            counter[symbol] += 1
+#    for product in products:
+#        for symbol in sp.parser_list(product):
+#            counter[symbol] += 1
+#    counter['.'] += len(reactants) + len(reagents) + len(products) - 3
+#    counter['>'] += 1
+#    return counter
 

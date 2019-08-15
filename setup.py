@@ -7,7 +7,6 @@ setuptools.setup(
     author="John Herr",
     author_email="johnherr@gmail.com",
     url="https://github.com/jeherr/rxntorch",
-    long_description=open('README.rst').read(),
     packages=setuptools.find_packages(),
     install_requires=[],
     classifiers=['Development Status :: 2 - Pre-Alpha',

@@ -1,6 +1,9 @@
 import _pickle as pickle
 from collections import Counter
 
+import rxntorch.smiles_parser as sp
+from rxntorch.utils import build_vocabulary
+
 
 class TorchVocab(object):
     """Defines a vocabulary object that will be used to numericalize a field.
@@ -46,13 +49,13 @@ class TorchVocab(object):
         max_size = None if max_size is None else max_size + len(self.itos)
 
         # sort by frequency, then alphabetically
-        words_and_frequencies = sorted(counter.items(), key=lambda tup: tup[0])
-        words_and_frequencies.sort(key=lambda tup: tup[1], reverse=True)
+        symbols_and_frequencies = sorted(counter.items(), key=lambda tup: tup[0])
+        symbols_and_frequencies.sort(key=lambda tup: tup[1], reverse=True)
 
-        for word, freq in words_and_frequencies:
+        for symbol, freq in symbols_and_frequencies:
             if freq < min_freq or len(self.itos) == max_size:
                 break
-            self.itos.append(word)
+            self.itos.append(symbol)
 
         # stoi is simply a reverse dict for itos
         self.stoi = {tok: i for i, tok in enumerate(self.itos)}
@@ -78,14 +81,14 @@ class TorchVocab(object):
         return len(self.itos)
 
     def vocab_rerank(self):
-        self.stoi = {word: i for i, word in enumerate(self.itos)}
+        self.stoi = {symbol: i for i, symbol in enumerate(self.itos)}
 
     def extend(self, v, sort=False):
-        words = sorted(v.itos) if sort else v.itos
-        for w in words:
-            if w not in self.stoi:
-                self.itos.append(w)
-                self.stoi[w] = len(self.itos) - 1
+        symbols = sorted(v.itos) if sort else v.itos
+        for symbol in symbols:
+            if symbol not in self.stoi:
+                self.itos.append(symbol)
+                self.stoi[symbol] = len(self.itos) - 1
 
 
 class Vocab(TorchVocab):
@@ -98,7 +101,7 @@ class Vocab(TorchVocab):
         super().__init__(counter, specials=["<pad>", "<unk>", "<eos>", "<sos>", "<mask>"],
                          max_size=max_size, min_freq=min_freq)
 
-    def to_seq(self, sentece, seq_len, with_eos=False, with_sos=False) -> list:
+    def to_seq(self, smile, seq_len, with_eos=False, with_sos=False) -> list:
         pass
 
     def from_seq(self, seq, join=False, with_pad=False):
@@ -114,12 +117,54 @@ class Vocab(TorchVocab):
             pickle.dump(self, f)
 
 
+class SmilesVocab(Vocab):
+    def __init__(self, dataset, max_size=None, min_freq=1):
+        counter = build_vocabulary(dataset)
+        super().__init__(counter, max_size=max_size, min_freq=min_freq)
+
+    def to_seq(self, sentence, seq_len=None, with_eos=False, with_sos=False, with_len=False):
+        if isinstance(sentence, str):
+            sentence = sentence.split()
+
+        seq = [self.stoi.get(word, self.unk_index) for word in sentence]
+
+        if with_eos:
+            seq += [self.eos_index]  # this would be index 1
+        if with_sos:
+            seq = [self.sos_index] + seq
+
+        origin_seq_len = len(seq)
+
+        if seq_len is None:
+            pass
+        elif len(seq) <= seq_len:
+            seq += [self.pad_index for _ in range(seq_len - len(seq))]
+        else:
+            seq = seq[:seq_len]
+
+        return (seq, origin_seq_len) if with_len else seq
+
+    def from_seq(self, seq, join=False, with_pad=False):
+        words = [self.itos[idx]
+                 if idx < len(self.itos)
+                 else "<%d>" % idx
+                 for idx in seq
+                 if not with_pad or idx != self.pad_index]
+
+        return " ".join(words) if join else words
+
+    @staticmethod
+    def load_vocab(vocab_path: str) -> 'WordVocab':
+        with open(vocab_path, "rb") as f:
+            return pickle.load(f)
+
+
 # Building Vocab with text files
 class WordVocab(Vocab):
     def __init__(self, texts, max_size=None, min_freq=1):
         print("Building Vocab")
         counter = Counter()
-        for line in tqdm.tqdm(texts):
+        for line in texts:
             if isinstance(line, list):
                 words = line
             else:
