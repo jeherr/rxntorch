@@ -1,8 +1,9 @@
+import tqdm
 import _pickle as pickle
 from collections import Counter
 
+import multiprocessing as mp
 import rxntorch.smiles_parser as sp
-from rxntorch.utils import build_vocabulary
 
 
 class TorchVocab(object):
@@ -119,7 +120,20 @@ class Vocab(TorchVocab):
 
 class SmilesVocab(Vocab):
     def __init__(self, dataset, max_size=None, min_freq=1):
-        counter = build_vocabulary(dataset)
+        print("Building vocabulary from dataset")
+        n = len(dataset)
+        rxn_smiles = dataset.rxn_smiles
+        pool = mp.Pool(mp.cpu_count())
+        result = list(tqdm.tqdm(pool.imap(build_rxn_vocab, rxn_smiles), total=n))
+        pool.close()
+        pool.join()
+        counter = Counter()
+        for item in result:
+            if type(item) == str:
+                continue
+            for symbol in item:
+                counter[symbol] += 1
+        print(counter['C'])
         super().__init__(counter, max_size=max_size, min_freq=min_freq)
 
     def to_seq(self, sentence, seq_len=None, with_eos=False, with_sos=False, with_len=False):
@@ -227,3 +241,23 @@ def build():
 
     print("VOCAB SIZE:", len(vocab))
     vocab.save_vocab(args.output_path)
+
+
+def build_rxn_vocab(smile):
+    try:
+        symbols = []
+        reactants, reagents, products = smile.split('>')
+        reactants, reagents, products = reactants.split('.'), reagents.split('.'), products.split('.')
+
+        for reactant in reactants:
+            symbols += sp.parser_list(reactant)
+        for reagent in reagents:
+            symbols += sp.parser_list(reagent)
+        for product in products:
+            symbols += sp.parser_list(product)
+        symbols += ['.'] * (len(reactants) + len(reagents) + len(products) - 3)
+        symbols += ['>']
+        return symbols
+    except:
+        return smile
+
