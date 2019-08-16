@@ -1,10 +1,12 @@
 import numpy as np
 
+import tqdm
 import torch
 import torch.nn as nn
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 
+from rxntorch.models.embedding import BERTEmbedding
 from rxntorch.models.utils import TransformerBlock
 
 
@@ -14,7 +16,7 @@ class BERTLM(nn.Module):
     Next Sentence Prediction Model + Masked Language Model
     """
 
-    def __init__(self, bert: BERT, vocab_size):
+    def __init__(self, bert, vocab_size):
         """
         :param bert: BERT model which should be trained
         :param vocab_size: total vocab size for masked_lm
@@ -77,6 +79,7 @@ class BERT(nn.Module):
         :param attn_heads:
         :param dropout:
         """
+        super().__init__()
         self.hidden = hidden
         self.n_layers = n_layers
         self.attn_heads = attn_heads
@@ -183,16 +186,16 @@ class BERTTrainer:
         str_code = "train" if train else "test"
 
         # Setting the tqdm progress bar
-        data_iter = tqdm.tqdm(enumerate(data_loader),
-                              desc="EP_%s:%d" % (str_code, epoch),
-                              total=len(data_loader),
-                              bar_format="{l_bar}{r_bar}")
+        #data_iter = tqdm.tqdm(enumerate(data_loader),
+        #                      desc="EP_%s:%d" % (str_code, epoch),
+        #                      total=len(data_loader),
+        #                      bar_format="{l_bar}{r_bar}")
 
         avg_loss = 0.0
         total_correct = 0
         total_element = 0
 
-        for i, data in data_iter:
+        for i, data in enumerate(data_loader):#data_iter:
             # 0. batch_data will be sent into the device(GPU or cpu)
             data = {key: value.to(self.device) for key, value in data.items()}
 

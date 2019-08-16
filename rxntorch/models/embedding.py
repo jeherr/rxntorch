@@ -18,7 +18,7 @@ class BERTEmbedding(nn.Module):
         :param embed_size: embedding size of token embedding
         :param dropout: dropout rate
         """
-        super().__init__()
+        super(BERTEmbedding, self).__init__()
         self.token = TokenEmbedding(vocab_size=vocab_size, embed_size=embed_size)
         self.position = PositionalEmbedding(model_dim=self.token.embedding_dim)
         self.segment = SegmentEmbedding(embed_size=self.token.embedding_dim)

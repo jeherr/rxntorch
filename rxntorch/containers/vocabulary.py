@@ -168,7 +168,8 @@ class SmilesVocab(Vocab):
         return " ".join(words) if join else words
 
     @staticmethod
-    def load_vocab(vocab_path: str) -> 'WordVocab':
+    def load_vocab(vocab_path: str) -> 'SmilesVocab':
+        print("Loading vocabulary from {}".format(vocab_path))
         with open(vocab_path, "rb") as f:
             return pickle.load(f)
 
