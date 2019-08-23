@@ -2,12 +2,12 @@ from __future__ import print_function
 
 import gzip
 import os
-import progressbar
 import _pickle as pickle
 
 from torch.utils.data import Dataset
 
 from .reaction import Rxn
+from .vocabulary import SmilesVocab
 from rxntorch.utils import rxn_smiles_reader
 import rxntorch.smiles_parser as sp
 
@@ -22,16 +22,28 @@ class RxnDataset(Dataset):
                 for mapping data into efficient batches.
 
     """
-    def __init__(self, file_name, path="data/"):
+    def __init__(self, file_name, path="data/", vocab):
         super(RxnDataset, self).__init__()
         self.file_name = file_name
         self.path = path
+        self.vocab = vocab
 
     def __len__(self):
         return len(self.rxns)
 
     def __getitem__(self, idx):
-        return self.rxns[idx].smile
+        rxn = self.rxns[idx]
+        reactant_list, product_list = self.vocab.split(rxn.smile)
+        reactant_list.insert(0, self.vocab.sos_index)
+        reactant_list.append(self.vocab_eos_index)
+        product_list.insert(0, self.vocab.sos_index)
+        product_list.append(self.vocab_eos_index)
+
+        output = {"input": reactant_list,
+                  "label": product_list,
+                  "segment_label": segment_label}
+
+        return {key: torch.tensor(value) for key, value in output.items()}
 
     def __setitem__(self, idx, value):
         self.rxns[idx] = value
@@ -62,6 +74,9 @@ class RxnDataset(Dataset):
         with open(os.path.join(path, file_name), "w") as f:
             for rxn in self.rxn_smiles:
                 f.write(rxn+"\n")
+
+    def build_vocab(self):
+
 
     def canonicalize(self):
         for rxn in self.rxns:

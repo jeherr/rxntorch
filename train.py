@@ -50,7 +50,7 @@ test_dataset = rxnd(args.test_dataset, path=args.dataset_path)
 test_dataset.load_from_file()
 
 print("Creating Dataloader")
-train_data_loader = DataLoader(train_dataset, batch_size=args.batch_size, num_workers=args.num_workers)
+train_data_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
 test_data_loader = DataLoader(test_dataset, batch_size=args.batch_size, num_workers=args.num_workers) \
     if test_dataset is not None else None
 

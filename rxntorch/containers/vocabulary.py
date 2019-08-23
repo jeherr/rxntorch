@@ -133,7 +133,6 @@ class SmilesVocab(Vocab):
                 continue
             for symbol in item:
                 counter[symbol] += 1
-        print(counter['C'])
         super().__init__(counter, max_size=max_size, min_freq=min_freq)
 
     def to_seq(self, sentence, seq_len=None, with_eos=False, with_sos=False, with_len=False):
@@ -166,6 +165,27 @@ class SmilesVocab(Vocab):
                  if not with_pad or idx != self.pad_index]
 
         return " ".join(words) if join else words
+
+    def split(self, smile):
+        reactants, reagents, products = smile.split('>')
+        reactants, reagents, products = reactants.split('.'), reagents.split('.'), products.split('.')
+        reactant_list, product_list = [], []
+
+        for reactant in reactants:
+            reactant_list += sp.parser_list(reactant)
+            reactant_list += '.'
+        reactant_list.pop()
+        reactant_list += '>'
+        for reagent in reagents:
+            reactant_list += sp.parser_list(reagent)
+            reactant_list += '.'
+        for product in products:
+            product_list += sp.parser_list(product)
+            product_list += '.'
+
+        reactant_list.pop()
+        product_list.pop()
+        return reactant_list, product_list
 
     @staticmethod
     def load_vocab(vocab_path: str) -> 'SmilesVocab':
