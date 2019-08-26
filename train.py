@@ -42,11 +42,11 @@ vocab = SmilesVocab.load_vocab(args.vocab_path)
 print("Vocab Size: ", len(vocab))
 
 print("Loading Train Dataset", args.train_dataset)
-train_dataset = rxnd(args.train_dataset, path=args.dataset_path)
+train_dataset = rxnd(args.train_dataset, path=args.dataset_path, vocab=vocab)
 train_dataset.load_from_file()
 
 print("Loading Test Dataset", args.test_dataset)
-test_dataset = rxnd(args.test_dataset, path=args.dataset_path)
+test_dataset = rxnd(args.test_dataset, path=args.dataset_path, vocab=vocab)
 test_dataset.load_from_file()
 
 print("Creating Dataloader")

@@ -21,12 +21,12 @@ class BERTEmbedding(nn.Module):
         super(BERTEmbedding, self).__init__()
         self.token = TokenEmbedding(vocab_size=vocab_size, embed_size=embed_size)
         self.position = PositionalEmbedding(model_dim=self.token.embedding_dim)
-        self.segment = SegmentEmbedding(embed_size=self.token.embedding_dim)
+        #self.segment = SegmentEmbedding(embed_size=self.token.embedding_dim)
         self.dropout = nn.Dropout(p=dropout)
         self.embed_size = embed_size
 
-    def forward(self, sequence, segment_label):
-        x = self.token(sequence) + self.position(sequence) + self.segment(segment_label)
+    def forward(self, sequence):
+        x = self.token(sequence) + self.position(sequence)# + self.segment(segment_label)
         return self.dropout(x)
 
 
@@ -55,7 +55,7 @@ class PositionalEmbedding(nn.Module):
     def forward(self, x):
         return self.pe[:, :x.size(1)]
 
-
+#TODO Maybe the segment embedding can signal reactants vs reagents?
 class SegmentEmbedding(nn.Embedding):
     def __init__(self, embed_size=512):
         super().__init__(3, embed_size, padding_idx=0)

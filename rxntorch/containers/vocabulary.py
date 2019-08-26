@@ -136,8 +136,8 @@ class SmilesVocab(Vocab):
         super().__init__(counter, max_size=max_size, min_freq=min_freq)
 
     def to_seq(self, sentence, seq_len=None, with_eos=False, with_sos=False, with_len=False):
-        if isinstance(sentence, str):
-            sentence = sentence.split()
+        #if isinstance(sentence, str):
+        #    sentence = sentence.split()
 
         seq = [self.stoi.get(word, self.unk_index) for word in sentence]
 
