@@ -233,9 +233,9 @@ class BERTTrainer:
             #if i % self.log_freq == 0:
             #    data_iter.write(str(post_fix))
 
-        print("EP%d_%s, avg_loss=" % (epoch, str_code), avg_loss / len(data_iter))
+        print("EP%d_%s, avg_loss=" % (epoch, str_code), avg_loss / len(data_loader))
 
-    def save(self, epoch, file_path="output/bert_trained.model"):
+    def save(self, epoch, file_path="models/bert_trained.model"):
         """
         Saving the current BERT model on file_path
 
