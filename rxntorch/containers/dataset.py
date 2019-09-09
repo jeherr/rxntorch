@@ -2,6 +2,7 @@ from __future__ import print_function
 
 import gzip
 import os
+import random
 import _pickle as pickle
 
 import torch
@@ -36,13 +37,40 @@ class RxnDataset(Dataset):
         rxn = self.rxns[idx]
         reactant_list, product_list = self.vocab.split(rxn.smile)
         reactant_list, product_list = self.vocab.to_seq(reactant_list, seq_len=150), self.vocab.to_seq(product_list, seq_len=150)
+
+        output_label = []
+        for i, token in enumerate(reactant_list):
+            prob = random.random()
+            if prob < 0.15:
+                prob /= 0.15
+
+                # 80% randomly change token to mask token
+                if prob < 0.8:
+                    reactant_list[i] = self.vocab.mask_index
+
+                # 10% randomly change token to random token
+                elif prob < 0.9:
+                    reactant_list[i] = random.randrange(len(self.vocab))
+
+                # 10% randomly change token to current token
+                else:
+                    reactant_list[i] = self.vocab.stoi.get(token, self.vocab.unk_index)
+
+                output_label.append(self.vocab.stoi.get(token, self.vocab.unk_index))
+
+            else:
+                reactant_list[i] = self.vocab.stoi.get(token, self.vocab.unk_index)
+                output_label.append(0)
+
         reactant_list.insert(0, self.vocab.sos_index)
         reactant_list.append(self.vocab.eos_index)
-        product_list.insert(0, self.vocab.sos_index)
-        product_list.append(self.vocab.eos_index)
+        output_label.insert(0, self.vocab.sos_index)
+        output_label.append(self.vocab.eos_index)
+        #product_list.insert(0, self.vocab.sos_index)
+        #product_list.append(self.vocab.eos_index)
 
         output = {"input": reactant_list,
-                  "label": product_list}
+                  "label": output_label}
 
         return {key: torch.tensor(value) for key, value in output.items()}
 

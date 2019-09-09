@@ -185,16 +185,16 @@ class BERTTrainer:
         str_code = "train" if train else "test"
 
         # Setting the tqdm progress bar
-        #data_iter = tqdm.tqdm(enumerate(data_loader),
-        #                      desc="EP_%s:%d" % (str_code, epoch),
-        #                      total=len(data_loader),
-        #                      bar_format="{l_bar}{r_bar}")
+        data_iter = tqdm.tqdm(enumerate(data_loader),
+                              desc="EP_%s:%d" % (str_code, epoch),
+                              total=len(data_loader),
+                              bar_format="{l_bar}{r_bar}")
 
         avg_loss = 0.0
         total_correct = 0
         total_element = 0
 
-        for i, data in enumerate(data_loader):#data_iter:
+        for i, data in data_iter:
             # 0. batch_data will be sent into the device(GPU or cpu)
             data = {key: value.to(self.device) for key, value in data.items()}
 
@@ -230,8 +230,8 @@ class BERTTrainer:
                 "loss": loss.item()
             }
 
-            #if i % self.log_freq == 0:
-            #    data_iter.write(str(post_fix))
+            if i % self.log_freq == 0:
+                data_iter.write(str(post_fix))
 
         print("EP%d_%s, avg_loss=" % (epoch, str_code), avg_loss / len(data_loader))
 
