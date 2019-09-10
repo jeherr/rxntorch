@@ -36,6 +36,27 @@ def rxn_smiles_reader(txt_file):
             rxns.append(r)
     return rxns
 
+def mol_smiles_reader(txt_file):
+    """Loads txt from a files containing molecule SMILES.
+
+    Files should be in the format of one molecule string per line. Additional
+    data can be added onto the end of the file in comma-seperated values. The
+    order of additional data will need to be standardized.
+
+    Args:
+        txt_file (str): Path to the csv file containing the data
+
+    Returns:
+        bins (dict): Dictionary of binned reaction strings by size. Keys
+            are the bin size and values are lists of the reaction strings.
+    """
+    mols = []
+    with open(txt_file, "r") as datafile:
+        for i, line in enumerate(datafile):
+            r = line.strip("\n").split()[0]
+            mols.append(r)
+    return mols
+
 def count(s):
     """Counts the number of heavy atoms in a reaction string."""
     c = 0
