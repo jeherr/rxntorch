@@ -53,7 +53,7 @@ def mol_smiles_reader(txt_file):
     mols = []
     with open(txt_file, "r") as datafile:
         for i, line in enumerate(datafile):
-            r = line.strip("\n").split()[0]
+            r = line.strip("\n")
             mols.append(r)
     return mols
 

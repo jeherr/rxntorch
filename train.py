@@ -3,7 +3,7 @@ import argparse
 from torch.utils.data import DataLoader
 
 from rxntorch.models.bert import BERT, BERTTrainer
-from rxntorch.containers import SmilesVocab
+from rxntorch.containers.vocabulary import SmilesVocab, MolVocab
 from rxntorch.containers import RxnDataset as rxnd
 
 

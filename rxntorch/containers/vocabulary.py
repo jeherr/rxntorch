@@ -118,6 +118,70 @@ class Vocab(TorchVocab):
             pickle.dump(self, f)
 
 
+class MolVocab(Vocab):
+    def __init__(self, dataset, max_size=None, min_freq=1):
+        print("Building vocabulary from dataset")
+        n = len(dataset)
+        mol_smiles = dataset.mol_smiles
+        pool = mp.Pool(mp.cpu_count())
+        result = list(tqdm.tqdm(pool.imap(build_mol_vocab, mol_smiles), total=n))
+        pool.close()
+        pool.join()
+        counter = Counter()
+        for item in result:
+            if type(item) == str:
+                continue
+            for symbol in item:
+                counter[symbol] += 1
+        super().__init__(counter, max_size=max_size, min_freq=min_freq)
+
+    def to_seq(self, sentence, seq_len=None, with_eos=False, with_sos=False, with_len=False):
+        if isinstance(sentence, str):
+            sentence = self.split(sentence)
+
+        seq = [self.stoi.get(word, self.unk_index) for word in sentence]
+
+        if with_eos:
+            seq += [self.eos_index]  # this would be index 1
+        if with_sos:
+            seq = [self.sos_index] + seq
+
+        origin_seq_len = len(seq)
+
+        if seq_len is None:
+            pass
+        elif len(seq) <= seq_len:
+            seq += [self.pad_index for _ in range(seq_len - len(seq))]
+        else:
+            seq = seq[:seq_len]
+
+        return (seq, origin_seq_len) if with_len else seq
+
+    def from_seq(self, seq, join=False, with_pad=False):
+        words = [self.itos[idx]
+                 if idx < len(self.itos)
+                 else "<%d>" % idx
+                 for idx in seq
+                 if not with_pad or idx != self.pad_index]
+
+        return " ".join(words) if join else words
+
+    def split(self, smile):
+        token_list = []
+        mols = smile.split('.')
+        for mol in mols:
+            token_list += sp.parser_list(mol)
+            token_list += '.'
+        token_list.pop()
+        return token_list
+
+    @staticmethod
+    def load_vocab(vocab_path: str) -> 'SmilesVocab':
+        print("Loading vocabulary from {}".format(vocab_path))
+        with open(vocab_path, "rb") as f:
+            return pickle.load(f)
+
+
 class SmilesVocab(Vocab):
     def __init__(self, dataset, max_size=None, min_freq=1):
         print("Building vocabulary from dataset")
@@ -136,8 +200,8 @@ class SmilesVocab(Vocab):
         super().__init__(counter, max_size=max_size, min_freq=min_freq)
 
     def to_seq(self, sentence, seq_len=None, with_eos=False, with_sos=False, with_len=False):
-        #if isinstance(sentence, str):
-        #    sentence = sentence.split()
+        if isinstance(sentence, str):
+            sentence = self.split(sentence)
 
         seq = [self.stoi.get(word, self.unk_index) for word in sentence]
 
@@ -194,58 +258,6 @@ class SmilesVocab(Vocab):
             return pickle.load(f)
 
 
-# Building Vocab with text files
-class WordVocab(Vocab):
-    def __init__(self, texts, max_size=None, min_freq=1):
-        print("Building Vocab")
-        counter = Counter()
-        for line in texts:
-            if isinstance(line, list):
-                words = line
-            else:
-                words = line.replace("\n", "").replace("\t", "").split()
-
-            for word in words:
-                counter[word] += 1
-        super().__init__(counter, max_size=max_size, min_freq=min_freq)
-
-    def to_seq(self, sentence, seq_len=None, with_eos=False, with_sos=False, with_len=False):
-        if isinstance(sentence, str):
-            sentence = sentence.split()
-
-        seq = [self.stoi.get(word, self.unk_index) for word in sentence]
-
-        if with_eos:
-            seq += [self.eos_index]  # this would be index 1
-        if with_sos:
-            seq = [self.sos_index] + seq
-
-        origin_seq_len = len(seq)
-
-        if seq_len is None:
-            pass
-        elif len(seq) <= seq_len:
-            seq += [self.pad_index for _ in range(seq_len - len(seq))]
-        else:
-            seq = seq[:seq_len]
-
-        return (seq, origin_seq_len) if with_len else seq
-
-    def from_seq(self, seq, join=False, with_pad=False):
-        words = [self.itos[idx]
-                 if idx < len(self.itos)
-                 else "<%d>" % idx
-                 for idx in seq
-                 if not with_pad or idx != self.pad_index]
-
-        return " ".join(words) if join else words
-
-    @staticmethod
-    def load_vocab(vocab_path: str) -> 'WordVocab':
-        with open(vocab_path, "rb") as f:
-            return pickle.load(f)
-
-
 def build():
     import argparse
 
@@ -278,6 +290,15 @@ def build_rxn_vocab(smile):
             symbols += sp.parser_list(product)
         symbols += ['.'] * (len(reactants) + len(reagents) + len(products) - 3)
         symbols += ['>']
+        return symbols
+    except:
+        return smile
+
+
+def build_mol_vocab(smile):
+    try:
+        symbols = sp.parser_list(smile)
+        symbols += ['.']
         return symbols
     except:
         return smile
