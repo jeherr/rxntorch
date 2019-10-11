@@ -11,6 +11,6 @@ class Net(nn.Module):
         atom_feats = F.relu(self.fc1(atom_feats))
         layers = []
         for i in range(depth):
-            atomnei_feats = 
+            atomnei_feats =
 
 

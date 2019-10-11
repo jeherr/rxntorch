@@ -31,6 +31,161 @@ class RxnDataset(Dataset):
     def __len__(self):
         return len(self.rxns)
 
+    def __setitem__(self, idx, value):
+        self.rxns[idx] = value
+
+    @property
+    def rxn_smiles(self):
+        return [rxn.smile for rxn in self.rxns]
+
+    @rxn_smiles.setter
+    def rxn_smiles(self, rxn_smiles):
+        self.rxns = [Rxn(rxn_smile) for rxn_smile in rxn_smiles]
+
+    @classmethod
+    def from_list(cls, rxns):
+        new_dataset = cls('')
+        new_dataset.rxns = rxns
+        return new_dataset
+
+    def load_from_file(self):
+        rxn_smiles = rxn_smiles_reader(os.path.join(self.path, self.file_name))
+        self.rxns = [Rxn(rxn_smile) for rxn_smile in rxn_smiles]
+
+    def save_to_file(self, file_name=None, path=None):
+        if file_name == None:
+            file_name = self.file_name
+        if path == None:
+            path = self.path
+        with open(os.path.join(path, file_name), "w") as f:
+            for rxn in self.rxn_smiles:
+                f.write(rxn+"\n")
+
+    def canonicalize(self):
+        for rxn in self.rxns:
+            rxn.canonicalize()
+
+    def remove_rxn_mappings(self):
+        for rxn in self.rxns:
+            rxn.remove_rxn_mapping()
+
+    def remove_max_reactants(self, max_reactants):
+        keep_rxns = [rxn for rxn in self.rxns if len(rxn.reactants) <= max_reactants]
+        self.rxns = keep_rxns
+
+    def remove_max_products(self, max_products):
+        keep_rxns = [rxn for rxn in self.rxns if len(rxn.products) <= max_products]
+        self.rxns = keep_rxns
+
+
+class RxnGraphDataset(RxnDataset):
+    """Object for containing sets of reactions SMILES strings.
+
+    Attributes:
+        file      (str): location of the file rxns are loaded from.
+        rxn_strs  (set): reaction strings of the dataset and the bonding changes.
+        bins     (dict): contains lists of indices to map rxn_strs to bin sizes
+                for mapping data into efficient batches.
+
+    """
+    def __init__(self, file_name, path="data/"):
+        super(RxnGraphDataset, self).__init__()
+        self.file_name = file_name
+        self.path = path
+
+    def __getitem__(self, idx):
+        rxn = self.rxns[idx]
+        mol = Chem.MolFromSmiles(rxn.reactants_smile)
+
+        n_atoms = mol.GetNumAtoms()
+        n_bonds = max(mol.GetNumBonds(), 1)
+        fatoms = np.zeros((n_atoms, atom_fdim))
+        fbonds = np.zeros((n_bonds, bond_fdim))
+        atom_nb = np.zeros((n_atoms, max_nb), dtype=np.int32)
+        bond_nb = np.zeros((n_atoms, max_nb), dtype=np.int32)
+        num_nbs = np.zeros((n_atoms,), dtype=np.int32)
+
+        for atom in mol.GetAtoms():
+            idx = idxfunc(atom)
+            if idx >= n_atoms:
+                raise Exception(smiles)
+            fatoms[idx] = atom_features(atom)
+
+        for bond in mol.GetBonds():
+            a1 = idxfunc(bond.GetBeginAtom())
+            a2 = idxfunc(bond.GetEndAtom())
+            idx = bond.GetIdx()
+            if num_nbs[a1] == max_nb or num_nbs[a2] == max_nb:
+                raise Exception(smiles)
+            atom_nb[a1, num_nbs[a1]] = a2
+            atom_nb[a2, num_nbs[a2]] = a1
+            bond_nb[a1, num_nbs[a1]] = idx
+            bond_nb[a2, num_nbs[a2]] = idx
+            num_nbs[a1] += 1
+            num_nbs[a2] += 1
+            fbonds[idx] = bond_features(bond)
+        return fatoms, fbonds, atom_nb, bond_nb, num_nbs
+
+
+        output_label = []
+        for i, token in enumerate(reactant_list):
+            prob = random.random()
+            if prob < 0.15:
+                prob /= 0.15
+
+                # 80% randomly change token to mask token
+                if prob < 0.8:
+                    reactant_list[i] = self.vocab.mask_index
+
+                # 10% randomly change token to random token
+                elif prob < 0.9:
+                    reactant_list[i] = random.randrange(len(self.vocab))
+
+                # 10% randomly change token to current token
+                else:
+                    reactant_list[i] = self.vocab.stoi.get(token, self.vocab.unk_index)
+
+                output_label.append(self.vocab.stoi.get(token, self.vocab.unk_index))
+
+            else:
+                reactant_list[i] = self.vocab.stoi.get(token, self.vocab.unk_index)
+                output_label.append(0)
+
+        reactant_list.insert(0, self.vocab.sos_index)
+        reactant_list.append(self.vocab.eos_index)
+        output_label.insert(0, self.vocab.sos_index)
+        output_label.append(self.vocab.eos_index)
+        #product_list.insert(0, self.vocab.sos_index)
+        #product_list.append(self.vocab.eos_index)
+
+        output = {"input": reactant_list,
+                  "label": output_label}
+
+        return {key: torch.tensor(value) for key, value in output.items()}
+
+    def get_indices_bins(self):
+        #TODO This method needs finished to collect indices for each reaction into bins to separate batches by size
+        lengths = [len(rxn.reactants_smile) for rxn in self.rxns]
+        print(max(lengths))
+        print(min(lengths))
+
+
+class RxnTransformerDataset(RxnDataset):
+    """Object for containing sets of reactions SMILES strings.
+
+    Attributes:
+        file      (str): location of the file rxns are loaded from.
+        rxn_strs  (set): reaction strings of the dataset and the bonding changes.
+        bins     (dict): contains lists of indices to map rxn_strs to bin sizes
+                for mapping data into efficient batches.
+
+    """
+    def __init__(self, file_name, path="data/", vocab=None):
+        super(RxnDataset, self).__init__()
+        self.file_name = file_name
+        self.path = path
+        self.vocab = vocab
+
     def __getitem__(self, idx):
         rxn = self.rxns[idx]
         reactant_list, product_list = self.vocab.split(rxn.smile)
@@ -72,57 +227,11 @@ class RxnDataset(Dataset):
 
         return {key: torch.tensor(value) for key, value in output.items()}
 
-    def __setitem__(self, idx, value):
-        self.rxns[idx] = value
-
-    @property
-    def rxn_smiles(self):
-        return [rxn.smile for rxn in self.rxns]
-
-    @rxn_smiles.setter
-    def rxn_smiles(self, rxn_smiles):
-        self.rxns = [Rxn(rxn_smile) for rxn_smile in rxn_smiles]
-
-    @classmethod
-    def from_list(cls, rxns):
-        new_dataset = cls('')
-        new_dataset.rxns = rxns
-        return new_dataset
-
-    def load_from_file(self):
-        rxn_smiles = rxn_smiles_reader(os.path.join(self.path, self.file_name))
-        self.rxns = [Rxn(rxn_smile) for rxn_smile in rxn_smiles]
-
-    def save_to_file(self, file_name=None, path=None):
-        if file_name == None:
-            file_name = self.file_name
-        if path == None:
-            path = self.path
-        with open(os.path.join(path, file_name), "w") as f:
-            for rxn in self.rxn_smiles:
-                f.write(rxn+"\n")
-
-    def canonicalize(self):
-        for rxn in self.rxns:
-            rxn.canonicalize()
-
-    def remove_rxn_mappings(self):
-        for rxn in self.rxns:
-            rxn.remove_rxn_mapping()
-
     def get_indices_bins(self):
         #TODO This method needs finished to collect indices for each reaction into bins to separate batches by size
         lengths = [len(rxn.reactants_smile) for rxn in self.rxns]
         print(max(lengths))
         print(min(lengths))
-
-    def remove_max_reactants(self, max_reactants):
-        keep_rxns = [rxn for rxn in self.rxns if len(rxn.reactants) <= max_reactants]
-        self.rxns = keep_rxns
-
-    def remove_max_products(self, max_products):
-        keep_rxns = [rxn for rxn in self.rxns if len(rxn.products) <= max_products]
-        self.rxns = keep_rxns
 
 
 class MolDataset(Dataset):
