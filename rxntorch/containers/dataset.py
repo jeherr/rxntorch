@@ -7,6 +7,10 @@ import random
 import torch
 from torch.utils.data import Dataset
 
+import rdkit.Chem as Chem
+
+from sklearn.preprocessing import LabelEncoder
+
 from .reaction import Rxn
 from .molecule import Mol
 from rxntorch.utils import rxn_smiles_reader, mol_smiles_reader
@@ -89,79 +93,91 @@ class RxnGraphDataset(RxnDataset):
 
     """
     def __init__(self, file_name, path="data/"):
-        super(RxnGraphDataset, self).__init__()
+        super(RxnGraphDataset, self).__init__(file_name, path)
         self.file_name = file_name
         self.path = path
+        self.rxns = []
+        self.degree_codec = LabelEncoder()
+        self.symbol_codec = LabelEncoder()
+        self.expl_val_codec = LabelEncoder()
+        self.bond_type_codec = LabelEncoder()
+        self._init_dataset()
+        self.atom_fdim = len(self.symbol_codec.classes_) + 6 + 6 + 6 + 1
+        self.bond_fdim = 6
+        self.max_nb = 10
 
     def __getitem__(self, idx):
-        rxn = self.rxns[idx]
-        mol = Chem.MolFromSmiles(rxn.reactants_smile)
+        rxn, edits, heavy_count = self.rxns[idx]
+        mol = Chem.MolFromSmiles('.'.join(filter(None, (rxn.reactants_smile, rxn.reagents_smile)))) 
 
         n_atoms = mol.GetNumAtoms()
-        n_bonds = max(mol.GetNumBonds(), 1)
-        fatoms = np.zeros((n_atoms, atom_fdim))
-        fbonds = np.zeros((n_bonds, bond_fdim))
-        atom_nb = np.zeros((n_atoms, max_nb), dtype=np.int32)
-        bond_nb = np.zeros((n_atoms, max_nb), dtype=np.int32)
-        num_nbs = np.zeros((n_atoms,), dtype=np.int32)
-
-        for atom in mol.GetAtoms():
-            idx = idxfunc(atom)
-            if idx >= n_atoms:
-                raise Exception(smiles)
-            fatoms[idx] = atom_features(atom)
+        fatoms = self.get_atom_features(mol)
+        fbonds = self.get_bond_features(mol)
+        atom_nb = torch.zeros((n_atoms, self.max_nb), dtype=torch.int)
+        bond_nb = torch.zeros((n_atoms, self.max_nb), dtype=torch.int)
+        num_nbs = torch.zeros((n_atoms,), dtype=torch.int)
 
         for bond in mol.GetBonds():
-            a1 = idxfunc(bond.GetBeginAtom())
-            a2 = idxfunc(bond.GetEndAtom())
+            a1 = bond.GetBeginAtom().GetIdx()
+            a2 = bond.GetEndAtom().GetIdx()
             idx = bond.GetIdx()
-            if num_nbs[a1] == max_nb or num_nbs[a2] == max_nb:
-                raise Exception(smiles)
+            if num_nbs[a1] == self.max_nb or num_nbs[a2] == self.max_nb:
+                raise Exception(rxn.reactants_smile)
             atom_nb[a1, num_nbs[a1]] = a2
             atom_nb[a2, num_nbs[a2]] = a1
             bond_nb[a1, num_nbs[a1]] = idx
             bond_nb[a2, num_nbs[a2]] = idx
             num_nbs[a1] += 1
             num_nbs[a2] += 1
-            fbonds[idx] = bond_features(bond)
         return fatoms, fbonds, atom_nb, bond_nb, num_nbs
 
+    def _init_dataset(self):
+        symbols = set()
+        degrees = set()
+        explicit_valences = set()
+        bond_types = set()
 
-        output_label = []
-        for i, token in enumerate(reactant_list):
-            prob = random.random()
-            if prob < 0.15:
-                prob /= 0.15
+        with open(os.path.join(self.path, self.file_name), "r") as datafile:
+            for line in datafile:
+                rxn_smile, edits = line.strip("\r\n ").split()
+                count = rxn_smile.count(":")
+                rxn = Rxn(rxn_smile)
+                self.rxns.append((rxn, edits, count))
+                mol = Chem.MolFromSmiles('.'.join(filter(None, (rxn.reactants_smile, rxn.reagents_smile))))
+                for atom in mol.GetAtoms():
+                    symbols.add(atom.GetSymbol())
+                    degrees.add(atom.GetDegree())
+                    explicit_valences.add(atom.GetExplicitValence())
+                for bond in mol.GetBonds():
+                    bond_types.add(bond.GetBondType())
+        symbols.add("unknown")
 
-                # 80% randomly change token to mask token
-                if prob < 0.8:
-                    reactant_list[i] = self.vocab.mask_index
+        self.degree_codec.fit(list(degrees))
+        self.symbol_codec.fit(list(symbols))
+        self.expl_val_codec.fit(list(explicit_valences))
+        self.bond_type_codec.fit(list(bond_types))
 
-                # 10% randomly change token to random token
-                elif prob < 0.9:
-                    reactant_list[i] = random.randrange(len(self.vocab))
+    def get_atom_features(self, mol):
+        symbols = [atom.GetSymbol() for atom in mol.GetAtoms()]
+        degrees = [atom.GetDegree() for atom in mol.GetAtoms()]
+        expl_vals = [atom.GetExplicitValence() for atom in mol.GetAtoms()]
 
-                # 10% randomly change token to current token
-                else:
-                    reactant_list[i] = self.vocab.stoi.get(token, self.vocab.unk_index)
+        t_symbol = self.to_one_hot(self.symbol_codec, symbols)
+        t_degree = self.to_one_hot(self.degree_codec, degrees)
+        t_expl_val = self.to_one_hot(self.expl_val_codec, expl_vals)
+        t_aromatic = torch.tensor([atom.GetIsAromatic() for atom in mol.GetAtoms()]).float().unsqueeze(1)
+        return torch.cat((t_symbol, t_degree, t_expl_val, t_aromatic), dim=1)
 
-                output_label.append(self.vocab.stoi.get(token, self.vocab.unk_index))
+    def get_bond_features(self, mol):
+        bond_types = [bond.GetBondType() for bond in mol.GetBonds()]
+        t_bond_types = self.to_one_hot(self.bond_type_codec, bond_types)
+        t_conjugated = torch.tensor([bond.GetIsConjugated() for bond in mol.GetBonds()]).float().unsqueeze(1)
+        t_in_ring = torch.tensor([bond.IsInRing() for bond in mol.GetBonds()]).float().unsqueeze(1)
+        return torch.cat((t_bond_types, t_conjugated, t_in_ring), dim=1)
 
-            else:
-                reactant_list[i] = self.vocab.stoi.get(token, self.vocab.unk_index)
-                output_label.append(0)
-
-        reactant_list.insert(0, self.vocab.sos_index)
-        reactant_list.append(self.vocab.eos_index)
-        output_label.insert(0, self.vocab.sos_index)
-        output_label.append(self.vocab.eos_index)
-        #product_list.insert(0, self.vocab.sos_index)
-        #product_list.append(self.vocab.eos_index)
-
-        output = {"input": reactant_list,
-                  "label": output_label}
-
-        return {key: torch.tensor(value) for key, value in output.items()}
+    def to_one_hot(self, codec, values):
+        value_idxs = codec.transform(values)
+        return torch.eye(len(codec.classes_), dtype=torch.float)[value_idxs]
 
     def get_indices_bins(self):
         #TODO This method needs finished to collect indices for each reaction into bins to separate batches by size

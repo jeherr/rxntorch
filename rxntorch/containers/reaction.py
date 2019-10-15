@@ -35,6 +35,10 @@ class Rxn(object):
         self.reagents = [Mol(smile) for smile in reagents_smile.split('.')]
         self.products = [Mol(smile) for smile in products_smile.split('.')]
 
+    @property
+    def mols(self):
+        return self.reactants + self.reagents + self.products
+
     def canonicalize(self):
         for mol in self.reactants:
             mol.canonicalize()
