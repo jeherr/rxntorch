@@ -102,8 +102,6 @@ class RxnGraphDataset(RxnDataset):
         self.expl_val_codec = LabelEncoder()
         self.bond_type_codec = LabelEncoder()
         self._init_dataset()
-        self.atom_fdim = len(self.symbol_codec.classes_) + 6 + 6 + 6 + 1
-        self.bond_fdim = 6
         self.max_nb = 10
 
     def __getitem__(self, idx):
@@ -113,8 +111,8 @@ class RxnGraphDataset(RxnDataset):
         n_atoms = mol.GetNumAtoms()
         fatoms = self.get_atom_features(mol)
         fbonds = self.get_bond_features(mol)
-        atom_nb = torch.zeros((n_atoms, self.max_nb), dtype=torch.int)
-        bond_nb = torch.zeros((n_atoms, self.max_nb), dtype=torch.int)
+        atom_nb = torch.zeros((n_atoms, self.max_nb), dtype=torch.long)
+        bond_nb = torch.zeros((n_atoms, self.max_nb), dtype=torch.long)
         num_nbs = torch.zeros((n_atoms,), dtype=torch.int)
 
         for bond in mol.GetBonds():
@@ -129,7 +127,9 @@ class RxnGraphDataset(RxnDataset):
             bond_nb[a2, num_nbs[a2]] = idx
             num_nbs[a1] += 1
             num_nbs[a2] += 1
-        return fatoms, fbonds, atom_nb, bond_nb, num_nbs
+
+        blabels = self.get_bond_labels(mol, edits, n_atoms)
+        return fatoms, fbonds, atom_nb, bond_nb, num_nbs, n_atoms
 
     def _init_dataset(self):
         symbols = set()
@@ -178,6 +178,20 @@ class RxnGraphDataset(RxnDataset):
     def to_one_hot(self, codec, values):
         value_idxs = codec.transform(values)
         return torch.eye(len(codec.classes_), dtype=torch.float)[value_idxs]
+
+    def get_bond_labels(self, mol, edits, n_atoms):
+        bo_to_index = {0.0: 0, 1: 1, 2: 2, 3: 3, 1.5: 4}
+        edits = edits.split(";")
+        bond_labels = torch.zeros((n_atoms, n_atoms, len(bo_to_index)))
+        for edit in edits:
+            atom1, atom2, bond_order = edit.split("-")
+            bo_index = bo_to_index(float(bond_order))
+            bond_labels[int(atom1)-1, int(atom2)-1, bo_index] = bond_labels[int(atom2)-1, int(atom1)-1, bo_index] = 1
+        for i in range(n_atoms):
+            bond_labels[i,i,:] = -1
+        return bond_labels
+
+
 
     def get_indices_bins(self):
         #TODO This method needs finished to collect indices for each reaction into bins to separate batches by size
