@@ -2,9 +2,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-class WeisLehmanNet(nn.Module):
+class WLNet(nn.Module):
     def __init__(self, depth, afeats_size, bfeats_size, hidden_size):
-        super(WeisLehmanNet, self).__init__()
+        super(WLNet, self).__init__()
         self.depth = depth
         self.fc1 = nn.Linear(afeats_size, hidden_size)
         self.graph_conv_nei = nn.Linear(afeats_size + bfeats_size, hidden_size)
