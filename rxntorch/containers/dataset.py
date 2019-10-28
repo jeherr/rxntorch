@@ -131,7 +131,15 @@ class RxnGraphDataset(RxnDataset):
 
         blabels = self.get_bond_labels(mol, edits, n_atoms)
         binary_feats = self.get_binary_features(react_smiles, n_atoms)
-        return fatoms, fbonds, atom_nb, bond_nb, num_nbs, n_atoms, blabels, binary_feats
+        output = {"atom_features": fatoms,
+                  "bond_features": fbonds,
+                  "atom_graph": atom_nb,
+                  "bond_graph": bond_nb,
+                  "n_bonds": num_nbs,
+                  "n_atoms": n_atoms,
+                  "bond_labels": blabels,
+                  "binary_features": binary_feats}
+        return output
 
     def _init_dataset(self):
         symbols = set()
@@ -224,7 +232,6 @@ class RxnGraphDataset(RxnDataset):
                 binary_features[i,j,-3] = binary_features[j,i,-3] = 1.0 if comp[i] == comp[j] else 0.0
                 binary_features[i,j,-2] = binary_features[j,i,-2] = 1.0 if n_comp == 1 else 0.0
                 binary_features[i,j,-1] = binary_features[j,i,-1] = 1.0 if n_comp > 1 else 0.0
-        print(binary_features)
         return binary_features
 
     def bond_features(self, bond):
