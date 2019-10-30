@@ -9,10 +9,7 @@ from sklearn.preprocessing import LabelEncoder
 import torch
 from torch.utils.data import Dataset
 
-
 from .reaction import Rxn
-from .molecule import Mol
-from rxntorch.utils import rxn_smiles_reader, mol_smiles_reader
 
 
 class RxnDataset(Dataset):
@@ -103,44 +100,6 @@ class RxnGraphDataset(RxnDataset):
         self._init_dataset()
         self.max_nb = 10
 
-    def __getitem__(self, idx):
-        rxn, edits, heavy_count = self.rxns[idx]
-        react_smiles = '.'.join(filter(None, (rxn.reactants_smile, rxn.reagents_smile)))
-        mol = Chem.MolFromSmiles(react_smiles)
-        atom_idx = torch.tensor([atom.GetIntProp('molAtomMapNumber')-1 for atom in mol.GetAtoms()], dtype=torch.long)
-
-        n_atoms = mol.GetNumAtoms()
-        fatoms = self.get_atom_features(mol, atom_idx)
-        fbonds = self.get_bond_features(mol)
-        atom_nb = torch.zeros((n_atoms, self.max_nb), dtype=torch.long)
-        bond_nb = torch.zeros((n_atoms, self.max_nb), dtype=torch.long)
-        num_nbs = torch.zeros((n_atoms,), dtype=torch.int)
-
-        for bond in mol.GetBonds():
-            a1 = bond.GetBeginAtom().GetIntProp('molAtomMapNumber')-1
-            a2 = bond.GetEndAtom().GetIntProp('molAtomMapNumber')-1
-            idx = bond.GetIdx()
-            if num_nbs[a1] == self.max_nb or num_nbs[a2] == self.max_nb:
-                raise Exception(rxn.reactants_smile)
-            atom_nb[a1, num_nbs[a1]] = a2
-            atom_nb[a2, num_nbs[a2]] = a1
-            bond_nb[a1, num_nbs[a1]] = idx
-            bond_nb[a2, num_nbs[a2]] = idx
-            num_nbs[a1] += 1
-            num_nbs[a2] += 1
-
-        blabels = self.get_bond_labels(mol, edits, n_atoms)
-        binary_feats = self.get_binary_features(react_smiles, n_atoms)
-        output = {"atom_features": fatoms,
-                  "bond_features": fbonds,
-                  "atom_graph": atom_nb,
-                  "bond_graph": bond_nb,
-                  "n_bonds": num_nbs,
-                  "n_atoms": n_atoms,
-                  "bond_labels": blabels,
-                  "binary_features": binary_feats}
-        return output
-
     def _init_dataset(self):
         symbols = set()
         degrees = set()
@@ -167,6 +126,45 @@ class RxnGraphDataset(RxnDataset):
         self.expl_val_codec.fit(list(explicit_valences))
         self.bond_type_codec.fit(list(bond_types))
 
+    def __getitem__(self, idx):
+        rxn, edits, heavy_count = self.rxns[idx]
+        react_smiles = '.'.join(filter(None, (rxn.reactants_smile, rxn.reagents_smile)))
+        mol = Chem.MolFromSmiles(react_smiles)
+        atom_idx = torch.tensor([atom.GetIntProp('molAtomMapNumber')-1 for atom in mol.GetAtoms()], dtype=torch.long)
+
+        n_atoms = mol.GetNumAtoms()
+        fatoms = self.get_atom_features(mol, atom_idx)
+        fbonds = self.get_bond_features(mol)
+        atom_nb = torch.zeros((n_atoms, self.max_nb), dtype=torch.long)
+        bond_nb = torch.zeros((n_atoms, self.max_nb), dtype=torch.long)
+        num_nbs = torch.zeros((n_atoms,), dtype=torch.int)
+
+        for bond in mol.GetBonds():
+            a1 = bond.GetBeginAtom().GetIntProp('molAtomMapNumber')-1
+            a2 = bond.GetEndAtom().GetIntProp('molAtomMapNumber')-1
+            idx = bond.GetIdx()
+            if num_nbs[a1] == self.max_nb or num_nbs[a2] == self.max_nb:
+                raise Exception(rxn.reactants_smile)
+            atom_nb[a1, num_nbs[a1]] = a2
+            atom_nb[a2, num_nbs[a2]] = a1
+            bond_nb[a1, num_nbs[a1]] = idx
+            bond_nb[a2, num_nbs[a2]] = idx
+            num_nbs[a1] += 1
+            num_nbs[a2] += 1
+
+        blabels = self.get_bond_labels(edits, n_atoms)
+        binary_feats = self.get_binary_features(react_smiles, n_atoms)
+        output = {"atom_features": fatoms,
+                  "bond_features": fbonds,
+                  "atom_graph": atom_nb,
+                  "bond_graph": bond_nb,
+                  "n_bonds": num_nbs,
+                  "n_atoms": n_atoms,
+                  "bond_labels": blabels,
+                  "binary_features": binary_feats}
+        return output
+
+
     def get_atom_features(self, mol, atom_idx):
         symbols = [atom.GetSymbol() for atom in mol.GetAtoms()]
         degrees = [atom.GetDegree() for atom in mol.GetAtoms()]
@@ -189,8 +187,12 @@ class RxnGraphDataset(RxnDataset):
         value_idxs = codec.transform(values)
         return torch.eye(len(codec.classes_), dtype=torch.float)[value_idxs]
 
-    def get_bond_labels(self, mol, edits, n_atoms):
-        bo_to_index = {0.0: 0, 1: 1, 2: 2, 3: 3, 1.5: 4}
+    def get_bond_labels(self, edits, n_atoms):
+        bo_to_index = {0.0: 0,
+                       1: 1,
+                       2: 2,
+                       3: 3,
+                       1.5: 4}
         edits = edits.split(";")
         bond_labels = torch.zeros((n_atoms, n_atoms, len(bo_to_index)))
         for edit in edits:
@@ -309,107 +311,3 @@ class RxnTransformerDataset(RxnDataset):
         lengths = [len(rxn.reactants_smile) for rxn in self.rxns]
         print(max(lengths))
         print(min(lengths))
-
-
-class MolDataset(Dataset):
-    """Object for containing sets of reactions SMILES strings.
-
-    Attributes:
-        file      (str): location of the file rxns are loaded from.
-        rxn_strs  (set): reaction strings of the dataset and the bonding changes.
-        bins     (dict): contains lists of indices to map rxn_strs to bin sizes
-                for mapping data into efficient batches.
-
-    """
-    def __init__(self, file_name, path="data/", vocab=None):
-        super(MolDataset, self).__init__()
-        self.file_name = file_name
-        self.path = path
-        self.vocab = vocab
-
-    def __len__(self):
-        return len(self.mols)
-
-    def __getitem__(self, idx):
-        mol1 = self.mols[idx]
-        mol2 = self.mols[random.randint(0, len(self.mols))]
-        length = len(mol1.smile)+len(mol2.smile)+1
-        input_list = self.vocab.to_seq('.'.join([mol1.smile, mol2.smile]), seq_len=150)
-        output_label = input_list
-        mask_idxs = random.sample(range(length), int(length * 0.15))
-        for idx in mask_idxs:
-            prob = random.random()
-
-            # 80% randomly change token to mask token
-            if prob < 0.8:
-                input_list[idx] = self.vocab.mask_index
-
-            # 10% randomly change token to random token
-            elif prob < 0.9:
-                input_list[idx] = random.randrange(len(self.vocab))
-
-            # 10% randomly change token to current token
-            #else:
-                #input_list[i] = self.vocab.stoi.get(token, self.vocab.unk_index)
-
-        input_list.insert(0, self.vocab.sos_index)
-        input_list.append(self.vocab.eos_index)
-        output_label.insert(0, self.vocab.sos_index)
-        output_label.append(self.vocab.eos_index)
-
-        output = {"input": input_list,
-                  "label": output_label}
-
-        return {key: torch.tensor(value) for key, value in output.items()}
-
-    def __setitem__(self, idx, value):
-        self.mols[idx] = value
-
-    @classmethod
-    def from_list(cls, mols):
-        new_dataset = cls('')
-        new_dataset.mols = mols
-        return new_dataset
-
-    @classmethod
-    def from_rxn_dataset(cls, rxn_dataset):
-        new_dataset = cls('')
-        mols = []
-        for rxn in rxn_dataset.rxns:
-            for mol in rxn.reactants:
-                mols.append(mol)
-            for mol in rxn.reagents:
-                mols.append(mol)
-            for mol in rxn.products:
-                mols.append(mol)
-        new_dataset.mols = mols
-        return new_dataset
-
-    @property
-    def mol_smiles(self):
-        return [mol.smile for mol in self.mols]
-
-    @mol_smiles.setter
-    def mol_smiles(self, mol_smiles):
-        self.mols = [Mol(mol_smile) for mol_smile in mol_smiles]
-
-    def load_from_file(self):
-        mol_smiles = mol_smiles_reader(os.path.join(self.path, self.file_name))
-        self.mols = [Mol(mol_smile) for mol_smile in mol_smiles]
-
-    def save_to_file(self, file_name=None, path=None):
-        if file_name == None:
-            file_name = self.file_name
-        if path == None:
-            path = self.path
-        with open(os.path.join(path, file_name), "w") as f:
-            for mol in self.mols:
-                f.write(mol.smile+"\n")
-
-    def canonicalize(self):
-        for mol in self.mols:
-            mol.canonicalize()
-
-    def strip_repeats(self):
-        unique_mols
-        return

@@ -1,155 +1,52 @@
 from __future__ import print_function
 
-import random
-import tqdm
-import numpy as np
-from collections import Counter
-from multiprocessing import Pool
-import _pickle as pickle
+import torch
 
-import rdkit.Chem as Chem
-import rxntorch.smiles_parser as sp
-
-elem_list = ['C', 'N', 'O', 'S', 'F', 'Si', 'P', 'Cl', 'Br', 'Mg', 'Na', 'Ca', 'Fe', 'As', 'Al', 'I', 'B', 'V', 'K', 'Tl', 'Yb', 'Sb', 'Sn', 'Ag', 'Pd', 'Co', 'Se', 'Ti', 'Zn', 'H', 'Li', 'Ge', 'Cu', 'Au', 'Ni', 'Cd', 'In', 'Mn', 'Zr', 'Cr', 'Pt', 'Hg', 'Pb', 'W', 'Ru', 'Nb', 'Re', 'Te', 'Rh', 'Tc', 'Ba', 'Bi', 'Hf', 'Mo', 'U', 'Sm', 'Os', 'Ir', 'Ce','Gd','Ga','Cs', 'unknown']
-atom_fdim = len(elem_list) + 6 + 6 + 6 + 1
-bond_fdim = 6
-max_nb = 10
-
-def rxn_smiles_reader(txt_file):
-    """Loads txt from a files containing reaction SMILES.
-
-    Files should be in the format of one reaction string per line. Additional
-    data can be added onto the end of the file in comma-seperated values. The
-    order of data will need to be standardized.
-
-    Args:
-        txt_file (str): Path to the csv file containing the data
-
-    Returns:
-        bins (dict): Dictionary of binned reaction strings by size. Keys
-            are the bin size and values are lists of the reaction strings.
+def collate_fn(batch_data):
     """
-    rxns = []
-    with open(txt_file, "r") as datafile:
-        for i, line in enumerate(datafile):
-            r = line.strip("\n").split()[0]
-            rxns.append(r)
-    return rxns
-
-def mol_smiles_reader(txt_file):
-    """Loads txt from a files containing molecule SMILES.
-
-    Files should be in the format of one molecule string per line. Additional
-    data can be added onto the end of the file in comma-seperated values. The
-    order of additional data will need to be standardized.
-
-    Args:
-        txt_file (str): Path to the csv file containing the data
-
-    Returns:
-        bins (dict): Dictionary of binned reaction strings by size. Keys
-            are the bin size and values are lists of the reaction strings.
+    Takes a batch of data for the graph network model and collates it into
+    torch tensors which are padded to accommodate different numbers of atoms
     """
-    mols = []
-    with open(txt_file, "r") as datafile:
-        for i, line in enumerate(datafile):
-            r = line.strip("\n")
-            mols.append(r)
-    return mols
+    n_atoms = torch.tensor([sample['n_atoms'] for sample in batch_data], dtype=torch.int32)
+    batch_size = len(batch_data)
+    max_atoms = n_atoms.max()
+    max_bonds = max([sample['bond_features'].shape[-2] for sample in batch_data])
+    afeatures_size = batch_data[0]['atom_features'].shape[-1]
+    bfeatures_size = batch_data[0]['bond_features'].shape[-1]
+    binfeatures_size = batch_data[0]['binary_features'].shape[-1]
+    blabel_size = batch_data[0]['bond_labels'].shape[-1]
 
-def count(s):
-    """Counts the number of heavy atoms in a reaction string."""
-    c = 0
-    for i in range(len(s)):
-        if s[i] == ':':
-            c += 1
-    return c
+    # Create torch tensors for inputs which need padding. Every tensor is padded with
+    # 0s except for the bond labels which are padded with -1 to catch invalid bonds
+    # which correspond to either padded atoms or atoms bonding to itself
+    atom_features = torch.zeros((batch_size, max_atoms, afeatures_size))
+    bond_features = torch.zeros((batch_size, max_bonds, bfeatures_size))
+    binary_features = torch.zeros((batch_size, max_atoms, max_atoms, binfeatures_size))
+    bond_labels = torch.full((batch_size, max_atoms, max_atoms, blabel_size), -1)
+    atom_graph = torch.zeros((batch_size, max_atoms, 10, 2), dtype=torch.int64)
+    bond_graph = torch.zeros((batch_size, max_atoms, 10, 2), dtype=torch.int64)
+    n_bonds = torch.zeros((batch_size, max_atoms), dtype=torch.int32)
 
-def get_mol_features(mol):
-    n_atoms = mol.GetNumAtoms()
-    n_bonds = max(mol.GetNumBonds(), 1)
+    for i, sample in enumerate(batch_data):
+        n_atom = n_atoms[i]
+        n_bond = sample['bond_features'].shape[-2]
+        atom_features[i,:n_atom,:] = sample['atom_features']
+        bond_features[i,:n_bond,:] = sample['bond_features']
+        binary_features[i,:n_atom,:n_atom,:] = sample['binary_features']
+        bond_labels[i,:n_atom,:n_atom,:] = sample['bond_labels']
+        atom_graph[i,:n_atom,:,0] = i
+        atom_graph[i,:n_atom,:,1] = sample['atom_graph']
+        bond_graph[i,:n_atom,:,0] = i
+        bond_graph[i,:n_atom,:,1] = sample['bond_graph']
+        n_bonds[i,:n_atom] = sample['n_bonds']
 
-    fatoms = np.zeros((n_atoms, atom_fdim))
-    fbonds = np.zeros((n_bonds, bond_fdim))
-    atom_nb = np.zeros((n_atoms, max_nb), dtype=np.int32)
-    bond_nb = np.zeros((n_atoms, max_nb), dtype=np.int32)
-    num_nbs = np.zeros((n_atoms,), dtype=np.int32)
-
-    for atom in mol.GetAtoms():
-        idx = atom.GetIdx()
-        if idx >= n_atoms:
-            raise Exception("idx >= n_atoms")
-        fatoms[idx] = atom_features(atom)
-
-    for bond in mol.GetBonds():
-        a1 = bond.GetBeginAtom().GetIdx()
-        a2 = bond.GetEndAtom().GetIdx()
-        idx = bond.GetIdx()
-        if num_nbs[a1] == max_nb or num_nbs[a2] == max_nb:
-            raise Exception(smiles)
-        atom_nb[a1,num_nbs[a1]] = a2
-        atom_nb[a2,num_nbs[a2]] = a1
-        bond_nb[a1,num_nbs[a1]] = idx
-        bond_nb[a2,num_nbs[a2]] = idx
-        num_nbs[a1] += 1
-        num_nbs[a2] += 1
-        fbonds[idx] = bond_features(bond)
-    return fatoms, fbonds, atom_nb, bond_nb, num_nbs
-
-def atom_features(atom):
-    return np.array(onek_encoding_unk(atom.GetSymbol(), elem_list)
-            + onek_encoding_unk(atom.GetDegree(), [0,1,2,3,4,5])
-            + onek_encoding_unk(atom.GetExplicitValence(), [1,2,3,4,5,6])
-            + onek_encoding_unk(atom.GetImplicitValence(), [0,1,2,3,4,5])
-            + [atom.GetIsAromatic()], dtype=np.float32)
-
-def onek_encoding_unk(x, allowable_set):
-    if x not in allowable_set:
-        x = allowable_set[-1]
-    return list(map(lambda s: x == s, allowable_set))
-
-def bond_features(bond):
-    bt = bond.GetBondType()
-    return np.array([bt == Chem.rdchem.BondType.SINGLE,
-                bt == Chem.rdchem.BondType.DOUBLE,
-                bt == Chem.rdchem.BondType.TRIPLE,
-                bt == Chem.rdchem.BondType.AROMATIC,
-                bond.GetIsConjugated(),
-                bond.IsInRing()], dtype=np.float32)
-
-
-#def build_vocabulary(dataset):
-#    n = len(dataset)
-#    pbar=tqdm(total=n)
-#    result = []
-#    pool = Pool(processes=8)
-#
-#    for i in range(n):
-#
-#    result = list(tqdm.tqdm(pool.imap(build_rxn_vocab, dataset.rxn_smiles), total=len(dataset)))
-#    pool.close()
-#    pool.join()
-#    counter = result[0]
-#    for i in range(1, 8):
-#        counter.update(result[i])
-#    return counter
-#
-#
-#def build_rxn_vocab(smile):
-#    counter = Counter()
-#    reactants, reagents, products = smile.split('>')
-#    reactants, reagents, products = reactants.split('.'), reagents.split('.'), products.split('.')
-#
-#    for reactant in reactants:
-#        for symbol in sp.parser_list(reactant):
-#            counter[symbol] += 1
-#    for reagent in reagents:
-#        for symbol in sp.parser_list(reagent):
-#            counter[symbol] += 1
-#    for product in products:
-#        for symbol in sp.parser_list(product):
-#            counter[symbol] += 1
-#    counter['.'] += len(reactants) + len(reagents) + len(products) - 3
-#    counter['>'] += 1
-#    return counter
+    output = {"atom_features": atom_features,
+              "bond_features": bond_features,
+              "atom_graph": atom_graph,
+              "bond_graph": bond_graph,
+              "n_bonds": n_bonds,
+              "n_atoms": n_atoms,
+              "bond_labels": bond_labels,
+              "binary_features": binary_features}
+    return output
 

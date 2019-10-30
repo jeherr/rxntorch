@@ -12,7 +12,7 @@ class Attention(nn.Module):
     def forward(self, local_feats, binary_feats):
         local_pair = local_feats.unsqueeze(1) + local_feats.unsqueeze(2)
         attention_features = F.relu(self.fcapair(local_pair) + self.fcbinary(binary_feats))
-        attention_score = F.sigmoid(self.fcattention(attention_features))
+        attention_score = torch.sigmoid(self.fcattention(attention_features))
         global_features = torch.sum(local_feats.unsqueeze(1) * attention_score, dim=2)
         global_pair = global_features.unsqueeze(1) + global_features.unsqueeze(2)
         return local_pair, global_pair
