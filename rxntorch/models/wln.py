@@ -1,22 +1,22 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from .layers import Linear
 
 class WLNet(nn.Module):
     def __init__(self, depth, afeats_size, bfeats_size, hidden_size):
         super(WLNet, self).__init__()
         self.depth = depth
-        self.fc1 = nn.Linear(afeats_size, hidden_size)
-        self.graph_conv_nei = nn.Linear(hidden_size + bfeats_size, hidden_size)
-        self.graph_conv_atom = nn.Linear(hidden_size * 2, hidden_size)
-        self.fc2atom_nei = nn.Linear(hidden_size, hidden_size)
-        self.fc2bond_nei = nn.Linear(bfeats_size, hidden_size)
-        self.fc2 = nn.Linear(hidden_size, hidden_size)
+        self.fc1 = Linear(afeats_size, hidden_size, bias=False)
+        self.graph_conv_nei = Linear(hidden_size + bfeats_size, hidden_size)
+        self.graph_conv_atom = Linear(hidden_size * 2, hidden_size)
+        self.fc2atom_nei = Linear(hidden_size, hidden_size, bias=False)
+        self.fc2bond_nei = Linear(bfeats_size, hidden_size, bias=False)
+        self.fc2 = Linear(hidden_size, hidden_size, bias=False)
 
     def forward(self, atom_feats, bond_feats, atom_graph, bond_graph, num_nbs, n_atoms):
         atom_feats = F.relu(self.fc1(atom_feats))
         bondnei_feats = bond_feats[bond_graph[:,:,:,0],bond_graph[:,:,:,1],:]
-
         # Creates tensors to mask padded neighbors and atoms
         mask_neis = torch.unsqueeze(num_nbs.unsqueeze(-1) > torch.arange(0, 10, dtype=torch.int32).view(1,1,-1), -1)
         max_n_atoms = n_atoms.max()

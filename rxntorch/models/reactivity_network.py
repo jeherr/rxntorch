@@ -41,7 +41,7 @@ class ReactivityTrainer(nn.Module):
         self.train_data = train_dataloader
         self.test_data = test_dataloader
         self.optimizer = Adam(self.model.parameters(), lr=lr, betas=betas, weight_decay=weight_decay)
-        self.optim_schedule = ScheduledOptim(self.optimizer, self.model.hidden_size, n_warmup_steps=warmup_steps)
+        #self.optim_schedule = ScheduledOptim(self.optimizer, self.model.hidden_size, n_warmup_steps=warmup_steps)
         self.log_freq = log_freq
 
         print("Total Parameters:", sum([p.nelement() for p in self.model.parameters()]))
@@ -66,23 +66,24 @@ class ReactivityTrainer(nn.Module):
         total_element = 0
 
         for i, data in data_iter:
-            # 0. batch_data will be sent into the device(GPU or cpu)
             data = {key: value.to(self.device) for key, value in data.items()}
 
-            # 1. forward the next_sentence_prediction and masked_lm model
             pair_scores, top_k = self.model.forward(data['atom_features'], data['bond_features'], data['atom_graph'],
                                                     data['bond_graph'], data['n_bonds'], data['n_atoms'],
                                                     data['binary_features'], data['bond_labels'])
-            loss = F.binary_cross_entropy_with_logits(pair_scores, data['bond_labels'], reduction='none')
+            bond_labels = F.relu(data['bond_labels'])
+            loss = F.binary_cross_entropy_with_logits(pair_scores, bond_labels, reduction='none')
             loss *= torch.ne(data['bond_labels'], -1).float()
             loss = torch.sum(loss)
             avg_loss += loss.item()
 
             # 3. backward and optimization only in train
             if train:
-                self.optim_schedule.zero_grad()
+                self.optimizer.zero_grad()
+                #self.optim_schedule.zero_grad()
                 loss.backward()
-                self.optim_schedule.step_and_update_lr()
+                #self.optim_schedule.step_and_update_lr()
+                self.optimizer.step()
 
             # Gather the indices of bond labels where a bond changes to calculate accuracy
             sp_labels = torch.stack(torch.where(torch.flatten(data['bond_labels'],
@@ -100,7 +101,6 @@ class ReactivityTrainer(nn.Module):
             mol_topk = [sp_top_k[idx,1] for idx in mol_topk_idx]
             hits = [(mol_labels[i].unsqueeze(0) == mol_topk[i].unsqueeze(1)).any(dim=-1) for i in range(batch_size)]
             print(hits)
-
             #print(torch.where((sp_labels.unsqueeze(0) == sp_top_k.unsqueeze(1)).all(dim=-1)))
 
 

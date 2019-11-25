@@ -1,13 +1,15 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from .layers import Linear
+
 
 class Attention(nn.Module):
     def __init__(self, hidden_size, binary_size):
         super(Attention, self).__init__()
-        self.fcapair = nn.Linear(hidden_size, hidden_size)
-        self.fcbinary = nn.Linear(binary_size, hidden_size)
-        self.fcattention = nn.Linear(hidden_size, 1)
+        self.fcapair = Linear(hidden_size, hidden_size, bias=False)
+        self.fcbinary = Linear(binary_size, hidden_size)
+        self.fcattention = Linear(hidden_size, 1)
 
     def forward(self, local_feats, binary_feats):
         local_pair = local_feats.unsqueeze(1) + local_feats.unsqueeze(2)
