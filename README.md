@@ -37,3 +37,14 @@ cd rxntorch
 python setup.py install
 ```
 
+## Getting Started
+
+Currently, only the first portion of the network is built, which predicts likely bond changes. There is a script in the root project directory named train_reactivity.py which loads the data, builds the model, and runs the training procedure. The dataset can be found in `rxntorch/data/` in a compressed archive. First, expand the archived data with
+```
+tar -zxf train.txt.proc.tar.gz
+```
+for the training data, and similarly for the test and validation data. To run the network, a minimal example with the default hyperparameters is as follows:
+```
+python train_reactivity.py -c "train.txt.proc" -o "./saved_models/reactivity.model"
+```
+
