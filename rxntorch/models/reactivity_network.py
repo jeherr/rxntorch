@@ -43,7 +43,7 @@ class ReactivityTrainer(nn.Module):
         self.optimizer = Adam(self.model.parameters(), lr=lr, betas=betas, weight_decay=weight_decay)
         #self.optim_schedule = ScheduledOptim(self.optimizer, self.model.hidden_size, n_warmup_steps=warmup_steps)
         self.log_freq = log_freq
-
+        self.model.to(self.device)
         print("Total Parameters:", sum([p.nelement() for p in self.model.parameters()]))
 
     def train(self, epoch):
@@ -89,7 +89,7 @@ class ReactivityTrainer(nn.Module):
             sp_labels = torch.stack(torch.where(torch.flatten(data['bond_labels'],
                                                               start_dim=1, end_dim=-1) == 1), dim=-1)
             batch_size, nk = top_k.shape[0], top_k.shape[1]
-            sp_top_k = torch.empty((batch_size * nk, 2), dtype=torch.int64)
+            sp_top_k = torch.empty((batch_size * nk, 2), dtype=torch.int64, device=self.device)
             for j in range(batch_size):
                 for k in range(nk):
                     sp_top_k[j * nk + k, 0], sp_top_k[j * nk + k, 1] = j, top_k[j, k]

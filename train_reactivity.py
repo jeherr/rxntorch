@@ -17,13 +17,13 @@ parser.add_argument("-o", "--output_path", required=True, type=str, help="ex)out
 parser.add_argument("-hs", "--hidden", type=int, default=300, help="hidden size of model layers")
 parser.add_argument("-l", "--layers", type=int, default=3, help="number of layers")
 
-parser.add_argument("-b", "--batch_size", type=int, default=32, help="number of batch_size")
+parser.add_argument("-b", "--batch_size", type=int, default=20, help="number of batch_size")
 parser.add_argument("-e", "--epochs", type=int, default=10, help="number of epochs")
 parser.add_argument("-w", "--num_workers", type=int, default=4, help="dataloader worker size")
 
 parser.add_argument("--with_cuda", type=bool, default=True, help="training with CUDA: true, or false")
-parser.add_argument("--log_freq", type=int, default=10, help="printing loss every n iter: setting n")
-parser.add_argument("--cuda_devices", type=int, nargs='+', default=None, help="CUDA device ids")
+parser.add_argument("--log_freq", type=int, default=1, help="printing loss every n iter: setting n")
+parser.add_argument("--cuda_devices", type=int, nargs='*', default=None, help="CUDA device ids")
 parser.add_argument("--on_memory", type=bool, default=True, help="Loading on memory: true or false")
 
 parser.add_argument("--lr", type=float, default=1e-3, help="learning rate of adam")
