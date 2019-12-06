@@ -41,7 +41,6 @@ class ReactivityTrainer(nn.Module):
         self.train_data = train_dataloader
         self.test_data = test_dataloader
         self.optimizer = Adam(self.model.parameters(), lr=lr, betas=betas, weight_decay=weight_decay)
-        self.optim_schedule = ScheduledOptim(self.optimizer, self.model.hidden_size, n_warmup_steps=warmup_steps)
         self.log_freq = log_freq
         self.model.to(self.device)
         print("Total Parameters:", sum([p.nelement() for p in self.model.parameters()]))
@@ -73,15 +72,14 @@ class ReactivityTrainer(nn.Module):
             bond_labels = F.relu(data['bond_labels'])
             loss = F.binary_cross_entropy_with_logits(pair_scores, bond_labels, reduction='none')
             loss *= torch.ne(data['bond_labels'], -1).float()
-            loss = torch.sum(loss)
+            loss = torch.mean(loss)
             avg_loss += loss.item()
 
             # 3. backward and optimization only in train
             if train:
                 self.optimizer.zero_grad()
-                #self.optim_schedule.zero_grad()
                 loss.backward()
-                #self.optim_schedule.step_and_update_lr()
+                nn.utils.clip_grad_norm_(self.model.parameters(), 5.0)
                 self.optimizer.step()
 
             # Gather the indices of bond labels where a bond changes to calculate accuracy
@@ -110,8 +108,8 @@ class ReactivityTrainer(nn.Module):
                     "epoch": epoch,
                     "iter": (i+1),
                     "loss": loss.item(),
-                    "Accuracy@10": sum_acc_10 / (50.0 * batch_size),
-                    "Accuracy@20": sum_acc_20 / (50.0 * batch_size)
+                    "Accuracy@10": sum_acc_10 / (self.log_freq * batch_size),
+                    "Accuracy@20": sum_acc_20 / (self.log_freq * batch_size)
                 }
                 data_iter.write(str(post_fix))
                 sum_acc_10, sum_acc_20 = 0.0, 0.0
