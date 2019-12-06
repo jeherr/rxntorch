@@ -30,7 +30,7 @@ class ReactivityNet(nn.Module):
 
 class ReactivityTrainer(nn.Module):
     def __init__(self, rxn_net, train_dataloader, test_dataloader, lr=1e-4, betas=(0.9, 0.999), weight_decay=0.01,
-                 warmup_steps=10000, with_cuda=True, cuda_devices=None, log_freq=10):
+                 with_cuda=True, cuda_devices=None, log_freq=10):
         super(ReactivityTrainer, self).__init__()
         cuda_condition = torch.cuda.is_available() and with_cuda
         self.device = torch.device("cuda" if cuda_condition else "cpu")
@@ -106,15 +106,26 @@ class ReactivityTrainer(nn.Module):
             sum_acc_20 += sum(all_correct_20).item()
 
             if (i+1) % self.log_freq == 0:
-                post_fix = {
-                    "epoch": epoch,
-                    "iter": (i+1),
-                    "loss": loss.item(),
-                    "Accuracy@10": sum_acc_10 / (self.log_freq * batch_size),
-                    "@20": sum_acc_20 / (self.log_freq * batch_size),
-                    "Param Norm": param_norm,
-                    "Grad Norm": sum_gnorm
-                }
+                if train:
+                    post_fix = {
+                        "epoch": epoch,
+                        "iter": (i+1),
+                        "loss": loss.item(),
+                        "Accuracy@10": sum_acc_10 / (self.log_freq * batch_size),
+                        "@20": sum_acc_20 / (self.log_freq * batch_size),
+                        "Param Norm": param_norm,
+                        "Grad Norm": sum_gnorm
+                    }
+                else:
+                    post_fix = {
+                        "epoch": epoch,
+                        "iter": (i + 1),
+                        "loss": loss.item(),
+                        "Accuracy@10": sum_acc_10 / (self.log_freq * batch_size),
+                        "@20": sum_acc_20 / (self.log_freq * batch_size),
+                        "Param Norm": param_norm,
+                        "Grad Norm": sum_gnorm
+                    }
                 data_iter.write(str(post_fix))
                 sum_acc_10, sum_acc_20, sum_gnorm = 0.0, 0.0, 0.0
 

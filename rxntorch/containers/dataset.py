@@ -130,14 +130,14 @@ class RxnGraphDataset(RxnDataset):
         rxn, edits, heavy_count = self.rxns[idx]
         react_smiles = '.'.join(filter(None, (rxn.reactants_smile, rxn.reagents_smile)))
         mol = Chem.MolFromSmiles(react_smiles)
-        atom_idx = torch.tensor([atom.GetIntProp('molAtomMapNumber')-1 for atom in mol.GetAtoms()], dtype=torch.long)
+        atom_idx = torch.tensor([atom.GetIntProp('molAtomMapNumber')-1 for atom in mol.GetAtoms()], dtype=torch.int64)
 
         n_atoms = mol.GetNumAtoms()
         fatoms = self.get_atom_features(mol, atom_idx)
         fbonds = self.get_bond_features(mol)
-        atom_nb = torch.zeros((n_atoms, self.max_nb), dtype=torch.long)
-        bond_nb = torch.zeros((n_atoms, self.max_nb), dtype=torch.long)
-        num_nbs = torch.zeros((n_atoms,), dtype=torch.int)
+        atom_nb = torch.zeros((n_atoms, self.max_nb), dtype=torch.int64)
+        bond_nb = torch.zeros((n_atoms, self.max_nb), dtype=torch.int64)
+        num_nbs = torch.zeros((n_atoms,), dtype=torch.int32)
 
         for bond in mol.GetBonds():
             a1 = bond.GetBeginAtom().GetIntProp('molAtomMapNumber')-1

@@ -27,7 +27,7 @@ parser.add_argument("--cuda_devices", type=int, nargs='*', default=None, help="C
 parser.add_argument("--on_memory", type=bool, default=True, help="Loading on memory: true or false")
 
 parser.add_argument("--lr", type=float, default=1e-3, help="learning rate of adam")
-parser.add_argument("--adam_weight_decay", type=float, default=0.01, help="weight_decay of adam")
+parser.add_argument("--adam_weight_decay", type=float, default=0.00, help="weight_decay of adam")
 parser.add_argument("--adam_beta1", type=float, default=0.9, help="adam first beta value")
 parser.add_argument("--adam_beta2", type=float, default=0.999, help="adam second beta value")
 
