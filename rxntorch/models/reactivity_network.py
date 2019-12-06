@@ -81,9 +81,9 @@ class ReactivityTrainer(nn.Module):
                 loss.backward()
                 param_norm = torch.sqrt(sum([torch.sum(param ** 2) for param in self.model.parameters()])).item()
                 grad_norm = torch.sqrt(sum([torch.sum(param.grad ** 2) for param in self.model.parameters()])).item()
+                sum_gnorm += grad_norm
                 nn.utils.clip_grad_norm_(self.model.parameters(), 5.0)
                 self.optimizer.step()
-            sum_gnorm += grad_norm
             # Gather the indices of bond labels where a bond changes to calculate accuracy
             sp_labels = torch.stack(torch.where(torch.flatten(data['bond_labels'],
                                                               start_dim=1, end_dim=-1) == 1), dim=-1)
@@ -122,9 +122,7 @@ class ReactivityTrainer(nn.Module):
                         "iter": (i + 1),
                         "loss": loss.item(),
                         "Accuracy@10": sum_acc_10 / (self.log_freq * batch_size),
-                        "@20": sum_acc_20 / (self.log_freq * batch_size),
-                        "Param Norm": param_norm,
-                        "Grad Norm": sum_gnorm
+                        "@20": sum_acc_20 / (self.log_freq * batch_size)
                     }
                 data_iter.write(str(post_fix))
                 sum_acc_10, sum_acc_20, sum_gnorm = 0.0, 0.0, 0.0
