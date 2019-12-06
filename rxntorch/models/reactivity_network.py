@@ -41,7 +41,7 @@ class ReactivityTrainer(nn.Module):
         self.train_data = train_dataloader
         self.test_data = test_dataloader
         self.optimizer = Adam(self.model.parameters(), lr=lr, betas=betas, weight_decay=weight_decay)
-        #self.optim_schedule = ScheduledOptim(self.optimizer, self.model.hidden_size, n_warmup_steps=warmup_steps)
+        self.optim_schedule = ScheduledOptim(self.optimizer, self.model.hidden_size, n_warmup_steps=warmup_steps)
         self.log_freq = log_freq
         self.model.to(self.device)
         print("Total Parameters:", sum([p.nelement() for p in self.model.parameters()]))
@@ -62,8 +62,7 @@ class ReactivityTrainer(nn.Module):
                               bar_format="{l_bar}{r_bar}")
 
         avg_loss = 0.0
-        total_correct = 0
-        total_element = 0
+        sum_acc_10, sum_acc_20 = 0, 0
 
         for i, data in data_iter:
             data = {key: value.to(self.device) for key, value in data.items()}
@@ -88,32 +87,34 @@ class ReactivityTrainer(nn.Module):
             # Gather the indices of bond labels where a bond changes to calculate accuracy
             sp_labels = torch.stack(torch.where(torch.flatten(data['bond_labels'],
                                                               start_dim=1, end_dim=-1) == 1), dim=-1)
+
             batch_size, nk = top_k.shape[0], top_k.shape[1]
             sp_top_k = torch.empty((batch_size * nk, 2), dtype=torch.int64, device=self.device)
             for j in range(batch_size):
                 for k in range(nk):
                     sp_top_k[j * nk + k, 0], sp_top_k[j * nk + k, 1] = j, top_k[j, k]
-
-            sum_acc, sum_err = 0.0, 0.0
             mol_label_idx = [torch.where(sp_labels[:,0] == i)[0] for i in range(batch_size)]
             mol_topk_idx = [torch.where(sp_top_k[:,0] == i)[0] for i in range(batch_size)]
             mol_labels = [sp_labels[idx,1] for idx in mol_label_idx]
             mol_topk = [sp_top_k[idx,1] for idx in mol_topk_idx]
-            hits = [(mol_labels[i].unsqueeze(0) == mol_topk[i].unsqueeze(1)).any(dim=-1) for i in range(batch_size)]
-            print(hits)
-            #print(torch.where((sp_labels.unsqueeze(0) == sp_top_k.unsqueeze(1)).all(dim=-1)))
+            hits_10 = [(mol_labels[i].unsqueeze(0) == mol_topk[i][:10].unsqueeze(1)).any(dim=0) for i in range(batch_size)]
+            hits_20 = [(mol_labels[i].unsqueeze(0) == mol_topk[i].unsqueeze(1)).any(dim=0) for i in range(batch_size)]
 
-
-            post_fix = {
-                "epoch": epoch,
-                "iter": i,
-                "avg_loss": avg_loss / (i + 1),
-                # "avg_acc": total_correct / total_element * 100,
-                "loss": loss.item()
-            }
+            all_correct_10 = [mol_hits.all().int() for mol_hits in hits_10]
+            all_correct_20 = [mol_hits.all().int() for mol_hits in hits_20]
+            sum_acc_10 += sum(all_correct_10).item()
+            sum_acc_20 += sum(all_correct_20).item()
 
             if i % self.log_freq == 0:
+                post_fix = {
+                    "epoch": epoch,
+                    "iter": i,
+                    "loss": loss.item(),
+                    "Accuracy@10": sum_acc_10,
+                    "Accuracy@20": sum_acc_20
+                }
                 data_iter.write(str(post_fix))
+                sum_acc_10, sum_acc_20 = 0, 0
 
         print("EP%d_%s, avg_loss=" % (epoch, str_code), avg_loss / len(data_iter))  # , "total_acc=",
         # total_correct * 100.0 / total_element)
