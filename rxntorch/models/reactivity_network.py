@@ -62,7 +62,7 @@ class ReactivityTrainer(nn.Module):
                               bar_format="{l_bar}{r_bar}")
 
         avg_loss = 0.0
-        sum_acc_10, sum_acc_20 = 0, 0
+        sum_acc_10, sum_acc_20 = 0.0, 0.0
 
         for i, data in data_iter:
             data = {key: value.to(self.device) for key, value in data.items()}
@@ -105,16 +105,16 @@ class ReactivityTrainer(nn.Module):
             sum_acc_10 += sum(all_correct_10).item()
             sum_acc_20 += sum(all_correct_20).item()
 
-            if i % self.log_freq == 0:
+            if (i+1) % self.log_freq == 0:
                 post_fix = {
                     "epoch": epoch,
-                    "iter": i,
+                    "iter": (i+1),
                     "loss": loss.item(),
-                    "Accuracy@10": sum_acc_10,
-                    "Accuracy@20": sum_acc_20
+                    "Accuracy@10": sum_acc_10 / (50.0 * batch_size),
+                    "Accuracy@20": sum_acc_20 / (50.0 * batch_size)
                 }
                 data_iter.write(str(post_fix))
-                sum_acc_10, sum_acc_20 = 0, 0
+                sum_acc_10, sum_acc_20 = 0.0, 0.0
 
         print("EP%d_%s, avg_loss=" % (epoch, str_code), avg_loss / len(data_iter))  # , "total_acc=",
         # total_correct * 100.0 / total_element)
