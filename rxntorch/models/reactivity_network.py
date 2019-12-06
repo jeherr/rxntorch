@@ -33,7 +33,7 @@ class ReactivityTrainer(nn.Module):
                  warmup_steps=10000, with_cuda=True, cuda_devices=None, log_freq=10):
         super(ReactivityTrainer, self).__init__()
         cuda_condition = torch.cuda.is_available() and with_cuda
-        self.device = torch.device("cuda:0" if cuda_condition else "cpu")
+        self.device = torch.device("cuda" if cuda_condition else "cpu")
         self.model = rxn_net
         if with_cuda and torch.cuda.device_count() > 1:
             print("Using %d GPUS" % torch.cuda.device_count())
@@ -61,7 +61,7 @@ class ReactivityTrainer(nn.Module):
                               bar_format="{l_bar}{r_bar}")
 
         avg_loss = 0.0
-        sum_acc_10, sum_acc_20 = 0.0, 0.0
+        sum_acc_10, sum_acc_20, sum_gnorm = 0.0, 0.0, 0.0
 
         for i, data in data_iter:
             data = {key: value.to(self.device) for key, value in data.items()}
@@ -79,9 +79,11 @@ class ReactivityTrainer(nn.Module):
             if train:
                 self.optimizer.zero_grad()
                 loss.backward()
+                param_norm = torch.sqrt(sum([torch.sum(param ** 2) for param in self.model.parameters()])).item()
+                grad_norm = torch.sqrt(sum([torch.sum(param.grad ** 2) for param in self.model.parameters()])).item()
                 nn.utils.clip_grad_norm_(self.model.parameters(), 5.0)
                 self.optimizer.step()
-
+            sum_gnorm += grad_norm
             # Gather the indices of bond labels where a bond changes to calculate accuracy
             sp_labels = torch.stack(torch.where(torch.flatten(data['bond_labels'],
                                                               start_dim=1, end_dim=-1) == 1), dim=-1)
@@ -109,10 +111,12 @@ class ReactivityTrainer(nn.Module):
                     "iter": (i+1),
                     "loss": loss.item(),
                     "Accuracy@10": sum_acc_10 / (self.log_freq * batch_size),
-                    "Accuracy@20": sum_acc_20 / (self.log_freq * batch_size)
+                    "@20": sum_acc_20 / (self.log_freq * batch_size),
+                    "Param Norm": param_norm,
+                    "Grad Norm": sum_gnorm
                 }
                 data_iter.write(str(post_fix))
-                sum_acc_10, sum_acc_20 = 0.0, 0.0
+                sum_acc_10, sum_acc_20, sum_gnorm = 0.0, 0.0, 0.0
 
         print("EP%d_%s, avg_loss=" % (epoch, str_code), avg_loss / len(data_iter))  # , "total_acc=",
         # total_correct * 100.0 / total_element)
