@@ -40,7 +40,8 @@ class ReactivityTrainer(nn.Module):
             self.model = nn.DataParallel(self.model, device_ids=cuda_devices)
         self.train_data = train_dataloader
         self.test_data = test_dataloader
-        self.optimizer = Adam(self.model.parameters(), lr=lr, betas=betas, weight_decay=weight_decay)
+        self.lr = lr
+        self.optimizer = Adam(self.model.parameters(), lr=self.lr, betas=betas, weight_decay=weight_decay)
         self.log_freq = log_freq
         self.model.to(self.device)
         print("Total Parameters:", sum([p.nelement() for p in self.model.parameters()]))
@@ -126,6 +127,10 @@ class ReactivityTrainer(nn.Module):
                     }
                 data_iter.write(str(post_fix))
                 sum_acc_10, sum_acc_20, sum_gnorm = 0.0, 0.0, 0.0
+
+            if (i+1) % 1 == 0:
+                for param_group in self.optimizer.param_groups:
+                    param_group['lr'] = self.lr * 0.9
 
         print("EP%d_%s, avg_loss=" % (epoch, str_code), avg_loss / len(data_iter))  # , "total_acc=",
         # total_correct * 100.0 / total_element)
