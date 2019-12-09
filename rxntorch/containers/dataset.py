@@ -2,7 +2,6 @@ from __future__ import print_function
 from __future__ import division
 
 import os
-import random
 import rdkit.Chem as Chem
 from sklearn.preprocessing import LabelEncoder
 
@@ -164,7 +163,6 @@ class RxnGraphDataset(RxnDataset):
                   "binary_features": binary_feats}
         return output
 
-
     def get_atom_features(self, mol, atom_idx):
         symbols = [atom.GetSymbol() for atom in mol.GetAtoms()]
         degrees = [atom.GetDegree() for atom in mol.GetAtoms()]
@@ -188,16 +186,16 @@ class RxnGraphDataset(RxnDataset):
         return torch.eye(len(codec.classes_), dtype=torch.float)[value_idxs]
 
     def get_bond_labels(self, edits, n_atoms):
-        bo_to_index = {0.0: 0,
+        bo_index_map = {0.0: 0,
                        1: 1,
                        2: 2,
                        3: 3,
                        1.5: 4}
         edits = edits.split(";")
-        bond_labels = torch.zeros((n_atoms, n_atoms, len(bo_to_index)))
+        bond_labels = torch.zeros((n_atoms, n_atoms, len(bo_index_map)))
         for edit in edits:
             atom1, atom2, bond_order = edit.split("-")
-            bo_index = bo_to_index[float(bond_order)]
+            bo_index = bo_index_map[float(bond_order)]
             bond_labels[int(atom1)-1, int(atom2)-1, bo_index] = bond_labels[int(atom2)-1, int(atom1)-1, bo_index] = 1
         for i in range(n_atoms):
             bond_labels[i,i,:] = -1
@@ -241,70 +239,6 @@ class RxnGraphDataset(RxnDataset):
         return torch.Tensor(
             [bt == Chem.rdchem.BondType.SINGLE, bt == Chem.rdchem.BondType.DOUBLE, bt == Chem.rdchem.BondType.TRIPLE,
              bt == Chem.rdchem.BondType.AROMATIC, bond.GetIsConjugated(), bond.IsInRing()])
-
-    def get_indices_bins(self):
-        #TODO This method needs finished to collect indices for each reaction into bins to separate batches by size
-        lengths = [len(rxn.reactants_smile) for rxn in self.rxns]
-        print(max(lengths))
-        print(min(lengths))
-
-
-class RxnTransformerDataset(RxnDataset):
-    """Object for containing sets of reactions SMILES strings.
-
-    Attributes:
-        file      (str): location of the file rxns are loaded from.
-        rxn_strs  (set): reaction strings of the dataset and the bonding changes.
-        bins     (dict): contains lists of indices to map rxn_strs to bin sizes
-                for mapping data into efficient batches.
-
-    """
-    def __init__(self, file_name, path="data/", vocab=None):
-        super(RxnDataset, self).__init__()
-        self.file_name = file_name
-        self.path = path
-        self.vocab = vocab
-
-    def __getitem__(self, idx):
-        rxn = self.rxns[idx]
-        reactant_list, product_list = self.vocab.split(rxn.smile)
-        reactant_list, product_list = self.vocab.to_seq(reactant_list, seq_len=150), self.vocab.to_seq(product_list, seq_len=150)
-
-        output_label = []
-        for i, token in enumerate(reactant_list):
-            prob = random.random()
-            if prob < 0.15:
-                prob /= 0.15
-
-                # 80% randomly change token to mask token
-                if prob < 0.8:
-                    reactant_list[i] = self.vocab.mask_index
-
-                # 10% randomly change token to random token
-                elif prob < 0.9:
-                    reactant_list[i] = random.randrange(len(self.vocab))
-
-                # 10% randomly change token to current token
-                else:
-                    reactant_list[i] = self.vocab.stoi.get(token, self.vocab.unk_index)
-
-                output_label.append(self.vocab.stoi.get(token, self.vocab.unk_index))
-
-            else:
-                reactant_list[i] = self.vocab.stoi.get(token, self.vocab.unk_index)
-                output_label.append(0)
-
-        reactant_list.insert(0, self.vocab.sos_index)
-        reactant_list.append(self.vocab.eos_index)
-        output_label.insert(0, self.vocab.sos_index)
-        output_label.append(self.vocab.eos_index)
-        #product_list.insert(0, self.vocab.sos_index)
-        #product_list.append(self.vocab.eos_index)
-
-        output = {"input": reactant_list,
-                  "label": output_label}
-
-        return {key: torch.tensor(value) for key, value in output.items()}
 
     def get_indices_bins(self):
         #TODO This method needs finished to collect indices for each reaction into bins to separate batches by size

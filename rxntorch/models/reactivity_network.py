@@ -112,7 +112,7 @@ class ReactivityTrainer(nn.Module):
                     }
                     logging.info(("Epoch: {epoch:2d}  Iteration: {iter:6,d}/{iters:,d}  Average loss: {avg_loss:f}  "
                         "Accuracy @10: {acc10:6.2%}  @20: {acc20:6.2%}  Param norm: {pnorm:8.4f}  "
-                        "Gradient norm: {gnorm:8.4f}").format(
+                        "Grad norm: {gnorm:8.4f}").format(
                         **post_fix))
                 else:
                     post_fix = {

@@ -35,6 +35,8 @@ parser.add_argument("--log_freq", type=int, default=50, help="printing loss ever
 
 args = parser.parse_args()
 
+outputfile = os.path.join(args.output_path, args.output_name)
+
 logfile = '.'.join((args.output_name, "log"))
 logpath = os.path.join(args.output_path, logfile)
 logging.basicConfig(level=logging.INFO, style='{', format="{asctime:s}: {message:s}",
@@ -69,5 +71,5 @@ trainer = RxnTrainer(net, train_dataloader, test_dataloader, lr=args.lr,
 logging.info("Training Start")
 for epoch in range(args.epochs):
     trainer.train(epoch)
-    trainer.save(epoch, args.output_path)
+    trainer.save(epoch, outputfile)
     trainer.test(epoch)
