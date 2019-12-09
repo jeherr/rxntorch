@@ -45,6 +45,6 @@ tar -zxf train.txt.proc.tar.gz
 ```
 for the training data, and similarly for the test and validation data. To run the network, a minimal example with the default hyperparameters is as follows:
 ```
-python train_reactivity.py -c "train.txt.proc" -o "./saved_models/reactivity.model"
+python train_reactivity.py -c "train.txt.proc" -o "reactivity.model"
 ```
 
