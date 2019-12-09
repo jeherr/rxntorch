@@ -1,14 +1,13 @@
+import logging
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import Adam
 
-import tqdm
-
 from .wln import WLNet
 from .attention import Attention
 from .reactivity_scoring import ReactivityScoring
-from .utils import ScheduledOptim
 
 
 class ReactivityNet(nn.Module):
@@ -36,7 +35,7 @@ class ReactivityTrainer(nn.Module):
         self.device = torch.device("cuda" if cuda_condition else "cpu")
         self.model = rxn_net
         if with_cuda and torch.cuda.device_count() > 1:
-            print("Using %d GPUS" % torch.cuda.device_count())
+            logging.info("Using {d} GPUS", torch.cuda.device_count())
             self.model = nn.DataParallel(self.model, device_ids=cuda_devices)
         self.train_data = train_dataloader
         self.test_data = test_dataloader
@@ -44,7 +43,7 @@ class ReactivityTrainer(nn.Module):
         self.optimizer = Adam(self.model.parameters(), lr=self.lr, betas=betas, weight_decay=weight_decay)
         self.log_freq = log_freq
         self.model.to(self.device)
-        print("Total Parameters:", sum([p.nelement() for p in self.model.parameters()]))
+        logging.info("Total Parameters: {:,d}".format(sum([p.nelement() for p in self.model.parameters()])))
 
     def train(self, epoch):
         self.iterate(epoch, self.train_data)
@@ -53,18 +52,11 @@ class ReactivityTrainer(nn.Module):
         self.iterate(epoch, self.test_data, train=False)
 
     def iterate(self, epoch, data_loader, train=True):
-        str_code = "train" if train else "test"
-
-        # Setting the tqdm progress bar
-        data_iter = tqdm.tqdm(enumerate(data_loader),
-                              desc="EP_%s:%d" % (str_code, epoch),
-                              total=len(data_loader),
-                              bar_format="{l_bar}{r_bar}")
-
         avg_loss = 0.0
         sum_acc_10, sum_acc_20, sum_gnorm = 0.0, 0.0, 0.0
+        iters = len(data_loader)
 
-        for i, data in data_iter:
+        for i, data in enumerate(data_loader):
             data = {key: value.to(self.device) for key, value in data.items()}
 
             pair_scores, top_k = self.model.forward(data['atom_features'], data['bond_features'], data['atom_graph'],
@@ -111,29 +103,35 @@ class ReactivityTrainer(nn.Module):
                     post_fix = {
                         "epoch": epoch,
                         "iter": (i+1),
-                        "loss": loss.item(),
-                        "Accuracy@10": sum_acc_10 / (self.log_freq * batch_size),
-                        "@20": sum_acc_20 / (self.log_freq * batch_size),
-                        "Param Norm": param_norm,
-                        "Grad Norm": sum_gnorm
+                        "iters": iters,
+                        "avg_loss": avg_loss,
+                        "acc10": sum_acc_10 / (self.log_freq * batch_size),
+                        "acc20": sum_acc_20 / (self.log_freq * batch_size),
+                        "pnorm": param_norm,
+                        "gnorm": sum_gnorm
                     }
+                    logging.info(("Epoch: {epoch:2d}  Iteration: {iter:6,d}/{iters:,d}  Average loss: {avg_loss:f}  "
+                        "Accuracy @10: {acc10:6.2%}  @20: {acc20:6.2%}  Param norm: {pnorm:8.4f}  "
+                        "Gradient norm: {gnorm:8.4f}").format(
+                        **post_fix))
                 else:
                     post_fix = {
                         "epoch": epoch,
                         "iter": (i + 1),
-                        "loss": loss.item(),
-                        "Accuracy@10": sum_acc_10 / (self.log_freq * batch_size),
-                        "@20": sum_acc_20 / (self.log_freq * batch_size)
+                        "iters": iters,
+                        "avg_loss": avg_loss,
+                        "acc10": sum_acc_10 / (self.log_freq * batch_size),
+                        "acc20": sum_acc_20 / (self.log_freq * batch_size)
                     }
-                data_iter.write(str(post_fix))
+                    logging.info(("Epoch: {epoch:2d}  Iteration: {iter:6,d}/{iters:,d}  Average loss: {avg_loss:f}  "
+                        "Accuracy @10: {acc10:6.2%}  @20: {acc20:6.2%}").format(
+                        **post_fix))
                 sum_acc_10, sum_acc_20, sum_gnorm = 0.0, 0.0, 0.0
+                avg_loss = 0.0
 
             if (i+1) % 1 == 0:
                 for param_group in self.optimizer.param_groups:
                     param_group['lr'] = self.lr * 0.9
-
-        print("EP%d_%s, avg_loss=" % (epoch, str_code), avg_loss / len(data_iter))  # , "total_acc=",
-        # total_correct * 100.0 / total_element)
 
     def save(self, epoch, file_path="output/trained.model"):
         """

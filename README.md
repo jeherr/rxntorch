@@ -26,9 +26,9 @@ otherwise, for a CPU only version
 ```
 conda install pytorch torchvision cpuonly -c pytorch
 ```
-Next, install tqdm and scikit-learn with
+Next, install scikit-learn with
 ```
-conda install tqdm scikit-learn
+conda install scikit-learn
 ```
 Finally, clone this repository to your local machine and install
 ```
