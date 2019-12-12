@@ -25,6 +25,7 @@ parser.add_argument("--lr", type=float, default=1e-3, help="learning rate of ada
 parser.add_argument("--adam_weight_decay", type=float, default=0.00, help="weight_decay of adam")
 parser.add_argument("--adam_beta1", type=float, default=0.9, help="adam first beta value")
 parser.add_argument("--adam_beta2", type=float, default=0.999, help="adam second beta value")
+parser.add_argument("-gc", "--grad_clip", type=float, default=None, help="value for gradient clipping")
 
 parser.add_argument("-w", "--num_workers", type=int, default=4, help="dataloader worker size")
 parser.add_argument("--with_cuda", type=bool, default=True, help="training with CUDA: true, or false")
@@ -35,8 +36,9 @@ parser.add_argument("--log_freq", type=int, default=50, help="printing loss ever
 
 args = parser.parse_args()
 
+if not os.path.exists(args.output_path):
+    os.mkdir(args.output_path)
 outputfile = os.path.join(args.output_path, args.output_name)
-
 logfile = '.'.join((args.output_name, "log"))
 logpath = os.path.join(args.output_path, logfile)
 logging.basicConfig(level=logging.INFO, style='{', format="{asctime:s}: {message:s}",
@@ -51,7 +53,7 @@ sample = dataset[0]
 afeats_size, bfeats_size, binary_size = (sample["atom_features"].shape[-1], sample["bond_features"].shape[-1],
                                         sample["binary_features"].shape[-1])
 
-n_test, n_val = int(n_samples * 0.1), int(n_samples * 0.1)
+n_test = n_val = int(n_samples * 0.1)
 n_train = n_samples - n_test - n_val
 train_set, test_set, val_set = random_split(dataset, (n_train, n_test, n_val))
 
@@ -66,7 +68,8 @@ net = RxnNet(depth=args.layers, afeats_size=afeats_size, bfeats_size=bfeats_size
 logging.info("Creating Trainer")
 trainer = RxnTrainer(net, train_dataloader, test_dataloader, lr=args.lr,
                      betas=(args.adam_beta1, args.adam_beta2), weight_decay=args.adam_weight_decay,
-                     with_cuda=args.with_cuda, cuda_devices=args.cuda_devices, log_freq=args.log_freq)
+                     with_cuda=args.with_cuda, cuda_devices=args.cuda_devices, log_freq=args.log_freq,
+                     grad_clip=args.grad_clip)
 
 logging.info("Training Start")
 for epoch in range(args.epochs):

@@ -29,7 +29,7 @@ class ReactivityNet(nn.Module):
 
 class ReactivityTrainer(nn.Module):
     def __init__(self, rxn_net, train_dataloader, test_dataloader, lr=1e-4, betas=(0.9, 0.999), weight_decay=0.01,
-                 with_cuda=True, cuda_devices=None, log_freq=10):
+                 with_cuda=True, cuda_devices=None, log_freq=10, grad_clip=None):
         super(ReactivityTrainer, self).__init__()
         cuda_condition = torch.cuda.is_available() and with_cuda
         self.device = torch.device("cuda" if cuda_condition else "cpu")
@@ -40,6 +40,7 @@ class ReactivityTrainer(nn.Module):
         self.train_data = train_dataloader
         self.test_data = test_dataloader
         self.lr = lr
+        self.grad_clip = grad_clip
         self.optimizer = Adam(self.model.parameters(), lr=self.lr, betas=betas, weight_decay=weight_decay)
         self.log_freq = log_freq
         self.model.to(self.device)
@@ -75,7 +76,8 @@ class ReactivityTrainer(nn.Module):
                 param_norm = torch.sqrt(sum([torch.sum(param ** 2) for param in self.model.parameters()])).item()
                 grad_norm = torch.sqrt(sum([torch.sum(param.grad ** 2) for param in self.model.parameters()])).item()
                 sum_gnorm += grad_norm
-                nn.utils.clip_grad_norm_(self.model.parameters(), 5.0)
+                if self.grad_clip is not None:
+                    nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
                 self.optimizer.step()
             # Gather the indices of bond labels where a bond changes to calculate accuracy
             sp_labels = torch.stack(torch.where(torch.flatten(data['bond_labels'],
