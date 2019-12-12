@@ -24,7 +24,10 @@ class ReactivityNet(nn.Module):
         pair_scores = self.reactivity_scoring(local_pair, global_pair, binary_feats)
         masked_scores = torch.where((blabels == -1.0), pair_scores - 10000, pair_scores)
         _, top_k = torch.topk(torch.flatten(masked_scores, start_dim=1, end_dim=-1), 20)
-        return pair_scores, top_k
+        bond_labels = F.relu(blabels)
+        loss = F.binary_cross_entropy_with_logits(pair_scores, bond_labels, reduction='none')
+        loss *= torch.ne(blabels, -1).float()
+        return pair_scores, top_k, loss
 
 
 class ReactivityTrainer(nn.Module):
@@ -68,13 +71,13 @@ class ReactivityTrainer(nn.Module):
                 data['n_atoms'].unsqueeze(-1) > torch.arange(0, max_n_atoms, dtype=torch.int32, device=self.device).view(1, -1),
                 -1)
 
-            pair_scores, top_k = self.model.forward(data['atom_features'], data['bond_features'], data['atom_graph'],
+            pair_scores, top_k, loss = self.model.forward(data['atom_features'], data['bond_features'], data['atom_graph'],
                                                     data['bond_graph'], data['n_bonds'], data['n_atoms'],
                                                     data['binary_features'], data['bond_labels'], mask_neis, mask_atoms)
 
-            bond_labels = F.relu(data['bond_labels'])
-            loss = F.binary_cross_entropy_with_logits(pair_scores, bond_labels, reduction='none')
-            loss *= torch.ne(data['bond_labels'], -1).float()
+            #bond_labels = F.relu(data['bond_labels'])
+            #loss = F.binary_cross_entropy_with_logits(pair_scores, bond_labels, reduction='none')
+            #loss *= torch.ne(data['bond_labels'], -1).float()
             loss = torch.mean(loss)
             avg_loss += loss.item()
 
