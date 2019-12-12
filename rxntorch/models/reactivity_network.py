@@ -71,6 +71,7 @@ class ReactivityTrainer(nn.Module):
             pair_scores, top_k = self.model.forward(data['atom_features'], data['bond_features'], data['atom_graph'],
                                                     data['bond_graph'], data['n_bonds'], data['n_atoms'],
                                                     data['binary_features'], data['bond_labels'], mask_neis, mask_atoms)
+
             bond_labels = F.relu(data['bond_labels'])
             loss = F.binary_cross_entropy_with_logits(pair_scores, bond_labels, reduction='none')
             loss *= torch.ne(data['bond_labels'], -1).float()
