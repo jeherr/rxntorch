@@ -18,8 +18,8 @@ class ReactivityNet(nn.Module):
         self.attention = Attention(hidden_size, binary_size)
         self.reactivity_scoring = ReactivityScoring(hidden_size, binary_size)
 
-    def forward(self, fatoms, fbonds, atom_nb, bond_nb, num_nbs, n_atoms, binary_feats, blabels):
-        local_features = self.wln(fatoms, fbonds, atom_nb, bond_nb, num_nbs, n_atoms)
+    def forward(self, fatoms, fbonds, atom_nb, bond_nb, num_nbs, n_atoms, binary_feats, blabels, mask_neis, mask_atoms):
+        local_features = self.wln(fatoms, fbonds, atom_nb, bond_nb, num_nbs, n_atoms, mask_neis, mask_atoms)
         local_pair, global_pair = self.attention(local_features, binary_feats)
         pair_scores = self.reactivity_scoring(local_pair, global_pair, binary_feats)
         masked_scores = torch.where((blabels == -1.0), pair_scores - 10000, pair_scores)
@@ -32,10 +32,10 @@ class ReactivityTrainer(nn.Module):
                  with_cuda=True, cuda_devices=None, log_freq=10, grad_clip=None):
         super(ReactivityTrainer, self).__init__()
         cuda_condition = torch.cuda.is_available() and with_cuda
-        self.device = torch.device("cuda" if cuda_condition else "cpu")
+        self.device = torch.device("cuda:0" if cuda_condition else "cpu")
         self.model = rxn_net
         if with_cuda and torch.cuda.device_count() > 1:
-            logging.info("Using {d} GPUS", torch.cuda.device_count())
+            logging.info("Using {} GPUS".format(torch.cuda.device_count()))
             self.model = nn.DataParallel(self.model, device_ids=cuda_devices)
         self.train_data = train_dataloader
         self.test_data = test_dataloader
@@ -60,9 +60,17 @@ class ReactivityTrainer(nn.Module):
         for i, data in enumerate(data_loader):
             data = {key: value.to(self.device) for key, value in data.items()}
 
+            #Create some masking logic for padding
+            mask_neis = torch.unsqueeze(
+                data['n_bonds'].unsqueeze(-1) > torch.arange(0, 10, dtype=torch.int32, device=self.device).view(1, 1, -1), -1)
+            max_n_atoms = data['n_atoms'].max()
+            mask_atoms = torch.unsqueeze(
+                n_atoms.unsqueeze(-1) > torch.arange(0, max_n_atoms, dtype=torch.int32, device=self.device).view(1, -1),
+                -1)
+
             pair_scores, top_k = self.model.forward(data['atom_features'], data['bond_features'], data['atom_graph'],
                                                     data['bond_graph'], data['n_bonds'], data['n_atoms'],
-                                                    data['binary_features'], data['bond_labels'])
+                                                    data['binary_features'], data['bond_labels'], mask_neis, mask_atoms)
             bond_labels = F.relu(data['bond_labels'])
             loss = F.binary_cross_entropy_with_logits(pair_scores, bond_labels, reduction='none')
             loss *= torch.ne(data['bond_labels'], -1).float()
