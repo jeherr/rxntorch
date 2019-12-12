@@ -65,7 +65,7 @@ class ReactivityTrainer(nn.Module):
                 data['n_bonds'].unsqueeze(-1) > torch.arange(0, 10, dtype=torch.int32, device=self.device).view(1, 1, -1), -1)
             max_n_atoms = data['n_atoms'].max()
             mask_atoms = torch.unsqueeze(
-                n_atoms.unsqueeze(-1) > torch.arange(0, max_n_atoms, dtype=torch.int32, device=self.device).view(1, -1),
+                data['n_atoms'].unsqueeze(-1) > torch.arange(0, max_n_atoms, dtype=torch.int32, device=self.device).view(1, -1),
                 -1)
 
             pair_scores, top_k = self.model.forward(data['atom_features'], data['bond_features'], data['atom_graph'],
