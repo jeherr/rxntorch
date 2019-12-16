@@ -47,10 +47,6 @@ class RxnDataset(Dataset):
         new_dataset.rxns = rxns
         return new_dataset
 
-    def load_from_file(self):
-        rxn_smiles = rxn_smiles_reader(os.path.join(self.path, self.file_name))
-        self.rxns = [Rxn(rxn_smile) for rxn_smile in rxn_smiles]
-
     def save_to_file(self, file_name=None, path=None):
         if file_name == None:
             file_name = self.file_name
@@ -97,7 +93,7 @@ class RxnGraphDataset(RxnDataset):
         self.expl_val_codec = LabelEncoder()
         self.bond_type_codec = LabelEncoder()
         self._init_dataset()
-        self.max_nb = 10
+        self.max_nbonds = 10
 
     def _init_dataset(self):
         symbols = set()
@@ -132,35 +128,35 @@ class RxnGraphDataset(RxnDataset):
         atom_idx = torch.tensor([atom.GetIntProp('molAtomMapNumber')-1 for atom in mol.GetAtoms()], dtype=torch.int64)
 
         n_atoms = mol.GetNumAtoms()
-        fatoms = self.get_atom_features(mol, atom_idx)
-        fbonds = self.get_bond_features(mol)
-        atom_nb = torch.zeros((n_atoms, self.max_nb), dtype=torch.int64)
-        bond_nb = torch.zeros((n_atoms, self.max_nb), dtype=torch.int64)
-        num_nbs = torch.zeros((n_atoms,), dtype=torch.int32)
+        atom_feats = self.get_atom_features(mol, atom_idx)
+        bond_feats = self.get_bond_features(mol)
+        atom_graph = torch.zeros((n_atoms, self.max_nbonds), dtype=torch.int64)
+        bond_graph = torch.zeros((n_atoms, self.max_nbonds), dtype=torch.int64)
+        n_bonds = torch.zeros((n_atoms,), dtype=torch.int32)
 
         for bond in mol.GetBonds():
             a1 = bond.GetBeginAtom().GetIntProp('molAtomMapNumber')-1
             a2 = bond.GetEndAtom().GetIntProp('molAtomMapNumber')-1
             idx = bond.GetIdx()
-            if num_nbs[a1] == self.max_nb or num_nbs[a2] == self.max_nb:
+            if n_bonds[a1] == self.max_nbonds or n_bonds[a2] == self.max_nbonds:
                 raise Exception(rxn.reactants_smile)
-            atom_nb[a1, num_nbs[a1]] = a2
-            atom_nb[a2, num_nbs[a2]] = a1
-            bond_nb[a1, num_nbs[a1]] = idx
-            bond_nb[a2, num_nbs[a2]] = idx
-            num_nbs[a1] += 1
-            num_nbs[a2] += 1
+            atom_graph[a1, n_bonds[a1]] = a2
+            atom_graph[a2, n_bonds[a2]] = a1
+            bond_graph[a1, n_bonds[a1]] = idx
+            bond_graph[a2, n_bonds[a2]] = idx
+            n_bonds[a1] += 1
+            n_bonds[a2] += 1
 
-        blabels = self.get_bond_labels(edits, n_atoms)
+        bond_labels = self.get_bond_labels(edits, n_atoms)
         binary_feats = self.get_binary_features(react_smiles, n_atoms)
-        output = {"atom_features": fatoms,
-                  "bond_features": fbonds,
-                  "atom_graph": atom_nb,
-                  "bond_graph": bond_nb,
-                  "n_bonds": num_nbs,
+        output = {"atom_feats": atom_feats,
+                  "bond_feats": bond_feats,
+                  "atom_graph": atom_graph,
+                  "bond_graph": bond_graph,
+                  "n_bonds": n_bonds,
                   "n_atoms": n_atoms,
-                  "bond_labels": blabels,
-                  "binary_features": binary_feats}
+                  "bond_labels": bond_labels,
+                  "binary_feats": binary_feats}
         return output
 
     def get_atom_features(self, mol, atom_idx):
@@ -181,11 +177,13 @@ class RxnGraphDataset(RxnDataset):
         t_in_ring = torch.tensor([bond.IsInRing() for bond in mol.GetBonds()]).float().unsqueeze(1)
         return torch.cat((t_bond_types, t_conjugated, t_in_ring), dim=1)
 
-    def to_one_hot(self, codec, values):
+    @staticmethod
+    def to_one_hot(codec, values):
         value_idxs = codec.transform(values)
         return torch.eye(len(codec.classes_), dtype=torch.float)[value_idxs]
 
-    def get_bond_labels(self, edits, n_atoms):
+    @staticmethod
+    def get_bond_labels(edits, n_atoms):
         bo_index_map = {0.0: 0,
                        1: 1,
                        2: 2,
@@ -215,33 +213,28 @@ class RxnGraphDataset(RxnDataset):
             a2 = bond.GetEndAtom().GetIntProp('molAtomMapNumber') - 1
             bond_map[(a1, a2)] = bond
 
-        binary_features = torch.zeros((n_atoms, n_atoms, 10))
+        binary_feats = torch.zeros((n_atoms, n_atoms, 10))
         for i in range(n_atoms):
             for j in range(i+1, n_atoms):
                 if i == j:
                     continue
                 if (i,j) in bond_map:
                     bond = bond_map[(i,j)]
-                    binary_features[i,j,1:1+6] = binary_features[j,i,1:1+6] = self.bond_features(bond)
+                    binary_feats[i,j,1:1+6] = binary_feats[j,i,1:1+6] = self.bond_features(bond)
                 elif (j,i) in bond_map:
                     bond = bond_map[(j,i)]
-                    binary_features[i,j,1:1+6] = binary_features[j,i,1:1+6] = self.bond_features(bond)
+                    binary_feats[i,j,1:1+6] = binary_feats[j,i,1:1+6] = self.bond_features(bond)
                 else:
-                    binary_features[i,j,0] = binary_features[j,i,0] = 1.0
-                binary_features[i,j,-4] = binary_features[j,i,-4] = 1.0 if comp[i] != comp[j] else 0.0
-                binary_features[i,j,-3] = binary_features[j,i,-3] = 1.0 if comp[i] == comp[j] else 0.0
-                binary_features[i,j,-2] = binary_features[j,i,-2] = 1.0 if n_comp == 1 else 0.0
-                binary_features[i,j,-1] = binary_features[j,i,-1] = 1.0 if n_comp > 1 else 0.0
-        return binary_features
+                    binary_feats[i,j,0] = binary_feats[j,i,0] = 1.0
+                binary_feats[i,j,-4] = binary_feats[j,i,-4] = 1.0 if comp[i] != comp[j] else 0.0
+                binary_feats[i,j,-3] = binary_feats[j,i,-3] = 1.0 if comp[i] == comp[j] else 0.0
+                binary_feats[i,j,-2] = binary_feats[j,i,-2] = 1.0 if n_comp == 1 else 0.0
+                binary_feats[i,j,-1] = binary_feats[j,i,-1] = 1.0 if n_comp > 1 else 0.0
+        return binary_feats
 
-    def bond_features(self, bond):
+    @staticmethod
+    def bond_features(bond):
         bt = bond.GetBondType()
         return torch.Tensor(
             [bt == Chem.rdchem.BondType.SINGLE, bt == Chem.rdchem.BondType.DOUBLE, bt == Chem.rdchem.BondType.TRIPLE,
              bt == Chem.rdchem.BondType.AROMATIC, bond.GetIsConjugated(), bond.IsInRing()])
-
-    def get_indices_bins(self):
-        #TODO This method needs finished to collect indices for each reaction into bins to separate batches by size
-        lengths = [len(rxn.reactants_smile) for rxn in self.rxns]
-        print(max(lengths))
-        print(min(lengths))

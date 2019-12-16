@@ -31,7 +31,7 @@ class ReactivityNet(nn.Module):
 
 
 class ReactivityTrainer(nn.Module):
-    def __init__(self, rxn_net, train_dataloader, test_dataloader, lr=1e-4, betas=(0.9, 0.999), weight_decay=0.01,
+    def __init__(self, rxn_net, lr=1e-4, betas=(0.9, 0.999), weight_decay=0.01,
                  with_cuda=True, cuda_devices=None, log_freq=10, grad_clip=None):
         super(ReactivityTrainer, self).__init__()
         cuda_condition = torch.cuda.is_available() and with_cuda
@@ -40,8 +40,6 @@ class ReactivityTrainer(nn.Module):
         if with_cuda and torch.cuda.device_count() > 1:
             logging.info("Using {} GPUS".format(torch.cuda.device_count()))
             self.model = nn.DataParallel(self.model, device_ids=cuda_devices)
-        self.train_data = train_dataloader
-        self.test_data = test_dataloader
         self.lr = lr
         self.grad_clip = grad_clip
         self.optimizer = Adam(self.model.parameters(), lr=self.lr, betas=betas, weight_decay=weight_decay)
@@ -49,11 +47,13 @@ class ReactivityTrainer(nn.Module):
         self.model.to(self.device)
         logging.info("Total Parameters: {:,d}".format(sum([p.nelement() for p in self.model.parameters()])))
 
-    def train(self, epoch):
-        self.iterate(epoch, self.train_data)
+    def train(self, epoch, data_loader):
+        self.model.train()
+        self.iterate(epoch, data_loader)
 
-    def test(self, epoch):
-        self.iterate(epoch, self.test_data, train=False)
+    def test(self, epoch, data_loader):
+        self.model.eval()
+        self.iterate(epoch, data_loader, train=False)
 
     def iterate(self, epoch, data_loader, train=True):
         avg_loss = 0.0
@@ -63,7 +63,7 @@ class ReactivityTrainer(nn.Module):
         for i, data in enumerate(data_loader):
             data = {key: value.to(self.device) for key, value in data.items()}
 
-            #Create some masking logic for padding
+            # Create some masking logic for padding
             mask_neis = torch.unsqueeze(
                 data['n_bonds'].unsqueeze(-1) > torch.arange(0, 10, dtype=torch.int32, device=self.device).view(1, 1, -1), -1)
             max_n_atoms = data['n_atoms'].max()
@@ -71,13 +71,10 @@ class ReactivityTrainer(nn.Module):
                 data['n_atoms'].unsqueeze(-1) > torch.arange(0, max_n_atoms, dtype=torch.int32, device=self.device).view(1, -1),
                 -1)
 
-            pair_scores, top_k, loss = self.model.forward(data['atom_features'], data['bond_features'], data['atom_graph'],
+            pair_scores, top_k, loss = self.model.forward(data['atom_feats'], data['bond_feats'], data['atom_graph'],
                                                     data['bond_graph'], data['n_bonds'], data['n_atoms'],
-                                                    data['binary_features'], data['bond_labels'], mask_neis, mask_atoms)
+                                                    data['binary_feats'], data['bond_labels'], mask_neis, mask_atoms)
 
-            #bond_labels = F.relu(data['bond_labels'])
-            #loss = F.binary_cross_entropy_with_logits(pair_scores, bond_labels, reduction='none')
-            #loss *= torch.ne(data['bond_labels'], -1).float()
             loss = torch.mean(loss)
             avg_loss += loss.item()
 

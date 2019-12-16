@@ -18,6 +18,7 @@ parser.add_argument("-op", "--output_path", type=str, default='./saved_models/',
 parser.add_argument("-o", "--output_name", required=True, type=str, help="e.g. rxntorch.model")
 
 parser.add_argument("-b", "--batch_size", type=int, default=20, help="number of batch_size")
+parser.add_argument("-bt", "--batch_size_test", type=int, default=None, help="batch size for evaluation")
 parser.add_argument("-e", "--epochs", type=int, default=10, help="number of epochs")
 parser.add_argument("-hs", "--hidden", type=int, default=300, help="hidden size of model layers")
 parser.add_argument("-l", "--layers", type=int, default=3, help="number of layers")
@@ -50,29 +51,34 @@ logging.info("Loading Training Dataset {dataset} in {datapath}".format(
 dataset = RxnGD(args.train_dataset, path=args.dataset_path)
 n_samples = len(dataset)
 sample = dataset[0]
-afeats_size, bfeats_size, binary_size = (sample["atom_features"].shape[-1], sample["bond_features"].shape[-1],
-                                        sample["binary_features"].shape[-1])
+afeats_size, bfeats_size, binary_size = (sample["atom_feats"].shape[-1], sample["bond_feats"].shape[-1],
+                                        sample["binary_feats"].shape[-1])
 
-n_test = n_val = int(n_samples * 0.1)
-n_train = n_samples - n_test - n_val
-train_set, test_set, val_set = random_split(dataset, (n_train, n_test, n_val))
+n_test = int(n_samples * 0.2)
+n_train = n_samples - n_test
+train_set, test_set = random_split(dataset, (n_train, n_test))
 
 logging.info("Creating Dataloaders")
 train_dataloader = DataLoader(train_set, batch_size=args.batch_size, num_workers=args.num_workers, collate_fn=collate_fn)
 test_dataloader = DataLoader(test_set, batch_size=args.batch_size, num_workers=args.num_workers, collate_fn=collate_fn)
 
+
 logging.info("Building Reaction scoring model")
+logging.info("-----Model hyperparameters-----")
+logging.info("Graph convolution layers: {}  Hidden size: {}  Batch size: {}  Epochs: {}".format(
+    args.layers, args.hidden, args.batch_size, args.epochs))
+logging.info("Learning rate: {}  Weight decay: {}  Gradient clipping: {}".format(
+    args.lr, args.adam_weight_decay, args.grad_clip))
 net = RxnNet(depth=args.layers, afeats_size=afeats_size, bfeats_size=bfeats_size,
              hidden_size=args.hidden, binary_size=binary_size)
 
 logging.info("Creating Trainer")
-trainer = RxnTrainer(net, train_dataloader, test_dataloader, lr=args.lr,
-                     betas=(args.adam_beta1, args.adam_beta2), weight_decay=args.adam_weight_decay,
+trainer = RxnTrainer(net, lr=args.lr, betas=(args.adam_beta1, args.adam_beta2), weight_decay=args.adam_weight_decay,
                      with_cuda=args.with_cuda, cuda_devices=args.cuda_devices, log_freq=args.log_freq,
                      grad_clip=args.grad_clip)
 
 logging.info("Training Start")
 for epoch in range(args.epochs):
-    trainer.train(epoch)
+    trainer.train(epoch, train_dataloader)
     trainer.save(epoch, outputfile)
-    trainer.test(epoch)
+    trainer.test(epoch, test_dataloader)
