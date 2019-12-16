@@ -47,18 +47,19 @@ class ReactivityTrainer(nn.Module):
         self.model.to(self.device)
         logging.info("Total Parameters: {:,d}".format(sum([p.nelement() for p in self.model.parameters()])))
 
-    def train(self, epoch, data_loader):
-        self.model.train()
+    def train_epoch(self, epoch, data_loader):
+        #self.model.train()
         self.iterate(epoch, data_loader)
 
-    def test(self, epoch, data_loader):
-        self.model.eval()
+    def test_epoch(self, epoch, data_loader):
+        #self.model.eval()
         self.iterate(epoch, data_loader, train=False)
 
     def iterate(self, epoch, data_loader, train=True):
         avg_loss = 0.0
         sum_acc_10, sum_acc_20, sum_gnorm = 0.0, 0.0, 0.0
         iters = len(data_loader)
+        test_loss, test_acc10, test_acc20 = 0.0, 0.0, 0.0
 
         for i, data in enumerate(data_loader):
             data = {key: value.to(self.device) for key, value in data.items()}
@@ -77,6 +78,7 @@ class ReactivityTrainer(nn.Module):
 
             loss = torch.mean(loss)
             avg_loss += loss.item()
+            test_loss += loss.item()
 
             # 3. backward and optimization only in train
             if train:
@@ -108,6 +110,8 @@ class ReactivityTrainer(nn.Module):
             all_correct_20 = [mol_hits.all().int() for mol_hits in hits_20]
             sum_acc_10 += sum(all_correct_10).item()
             sum_acc_20 += sum(all_correct_20).item()
+            test_acc10 += sum(all_correct_10).item()
+            test_acc20 += sum(all_correct_20).item()
 
             if (i+1) % self.log_freq == 0:
                 if train:
@@ -143,6 +147,10 @@ class ReactivityTrainer(nn.Module):
             if (i+1) % 1 == 0:
                 for param_group in self.optimizer.param_groups:
                     param_group['lr'] = self.lr * 0.9
+        if not train:
+            logging.info("-----Testing summary-----")
+            logging.info("Epoch: {:2d}  Average loss: {:f}  Accuracy @10: {:6.2%}  @20: {:6.2%}".format(epoch,
+                test_loss / iters, test_acc10 / (iters * batch_size), test_acc20 / (iters * batch_size)))
 
     def save(self, epoch, file_path="output/trained.model"):
         """

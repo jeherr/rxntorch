@@ -18,7 +18,6 @@ class WLNet(nn.Module):
 
     def forward(self, atom_feats, bond_feats, atom_graph, bond_graph, num_nbs, n_atoms, mask_neis, mask_atoms):
         atom_feats = F.relu(self.fc1(atom_feats))
-        #bondnei_feats = bond_feats[bond_graph[:,:,:,0],bond_graph[:,:,:,1],:]
         bondnei_feats = torch.stack([bond_feats[i,bond_graph[i,...,1],:] for i in range(atom_feats.shape[0])])
         # Creates tensors to mask padded neighbors and atoms
         #mask_neis = torch.unsqueeze(num_nbs.unsqueeze(-1) > torch.arange(0, 10, dtype=torch.int32, device=self.device).view(1,1,-1), -1)

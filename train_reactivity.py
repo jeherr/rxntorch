@@ -79,6 +79,6 @@ trainer = RxnTrainer(net, lr=args.lr, betas=(args.adam_beta1, args.adam_beta2), 
 
 logging.info("Training Start")
 for epoch in range(args.epochs):
-    trainer.train(epoch, train_dataloader)
+    trainer.train_epoch(epoch, train_dataloader)
     trainer.save(epoch, outputfile)
-    trainer.test(epoch, test_dataloader)
+    trainer.test_epoch(epoch, test_dataloader)
