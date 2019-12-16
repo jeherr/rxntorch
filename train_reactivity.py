@@ -27,6 +27,7 @@ parser.add_argument("--adam_weight_decay", type=float, default=0.00, help="weigh
 parser.add_argument("--adam_beta1", type=float, default=0.9, help="adam first beta value")
 parser.add_argument("--adam_beta2", type=float, default=0.999, help="adam second beta value")
 parser.add_argument("-gc", "--grad_clip", type=float, default=None, help="value for gradient clipping")
+parser.add_argument("-pw", "--pos_weight", type=float, default=1.0, help="Weights positive samples for imbalance")
 
 parser.add_argument("-w", "--num_workers", type=int, default=4, help="dataloader worker size")
 parser.add_argument("--with_cuda", type=bool, default=True, help="training with CUDA: true, or false")
@@ -75,7 +76,7 @@ net = RxnNet(depth=args.layers, afeats_size=afeats_size, bfeats_size=bfeats_size
 logging.info("Creating Trainer")
 trainer = RxnTrainer(net, lr=args.lr, betas=(args.adam_beta1, args.adam_beta2), weight_decay=args.adam_weight_decay,
                      with_cuda=args.with_cuda, cuda_devices=args.cuda_devices, log_freq=args.log_freq,
-                     grad_clip=args.grad_clip)
+                     grad_clip=args.grad_clip, pos_weight=args.pos_weight)
 
 logging.info("Training Start")
 for epoch in range(args.epochs):

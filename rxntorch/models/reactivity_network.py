@@ -24,16 +24,12 @@ class ReactivityNet(nn.Module):
         pair_scores = self.reactivity_scoring(local_pair, global_pair, binary_feats)
         masked_scores = torch.where((blabels == -1.0), pair_scores - 10000, pair_scores)
         _, top_k = torch.topk(torch.flatten(masked_scores, start_dim=1, end_dim=-1), 20)
-        bond_labels = F.relu(blabels)
-        pos_weight = torch.where(bond_labels == 1.0, 10.0 * torch.ones_like(bond_labels), torch.ones_like(bond_labels))
-        loss = F.binary_cross_entropy_with_logits(pair_scores, bond_labels, reduction='none', pos_weight=pos_weight)
-        loss *= torch.ne(blabels, -1).float()
-        return pair_scores, top_k, loss
+        return pair_scores, top_k
 
 
 class ReactivityTrainer(nn.Module):
     def __init__(self, rxn_net, lr=1e-4, betas=(0.9, 0.999), weight_decay=0.01,
-                 with_cuda=True, cuda_devices=None, log_freq=10, grad_clip=None):
+                 with_cuda=True, cuda_devices=None, log_freq=10, grad_clip=None, pos_weight=1.0):
         super(ReactivityTrainer, self).__init__()
         cuda_condition = torch.cuda.is_available() and with_cuda
         self.device = torch.device("cuda:0" if cuda_condition else "cpu")
@@ -45,6 +41,7 @@ class ReactivityTrainer(nn.Module):
         self.grad_clip = grad_clip
         self.optimizer = Adam(self.model.parameters(), lr=self.lr, betas=betas, weight_decay=weight_decay)
         self.log_freq = log_freq
+        self.pos_weight = pos_weight
         self.model.to(self.device)
         logging.info("Total Parameters: {:,d}".format(sum([p.nelement() for p in self.model.parameters()])))
 
@@ -73,10 +70,15 @@ class ReactivityTrainer(nn.Module):
                 data['n_atoms'].unsqueeze(-1) > torch.arange(0, max_n_atoms, dtype=torch.int32, device=self.device).view(1, -1),
                 -1)
 
-            pair_scores, top_k, loss = self.model.forward(data['atom_feats'], data['bond_feats'], data['atom_graph'],
+            pair_scores, top_k = self.model.forward(data['atom_feats'], data['bond_feats'], data['atom_graph'],
                                                     data['bond_graph'], data['n_bonds'], data['n_atoms'],
                                                     data['binary_feats'], data['bond_labels'], mask_neis, mask_atoms)
 
+            bond_labels = F.relu(data['bond_labels'])
+            pos_weight = torch.where(bond_labels == 1.0, self.pos_weight * torch.ones_like(bond_labels),
+                                     torch.ones_like(bond_labels))
+            loss = F.binary_cross_entropy_with_logits(pair_scores, bond_labels, reduction='none', pos_weight=pos_weight)
+            loss *= torch.ne(data['bond_labels'], -1).float()
             loss = torch.mean(loss)
             avg_loss += loss.item()
             test_loss += loss.item()
