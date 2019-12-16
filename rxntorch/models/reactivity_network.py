@@ -42,6 +42,7 @@ class ReactivityTrainer(nn.Module):
         self.optimizer = Adam(self.model.parameters(), lr=self.lr, betas=betas, weight_decay=weight_decay)
         self.log_freq = log_freq
         self.pos_weight = pos_weight
+        self.total_iters = 0
         self.model.to(self.device)
         logging.info("Total Parameters: {:,d}".format(sum([p.nelement() for p in self.model.parameters()])))
 
@@ -60,6 +61,7 @@ class ReactivityTrainer(nn.Module):
         test_loss, test_acc10, test_acc20 = 0.0, 0.0, 0.0
 
         for i, data in enumerate(data_loader):
+            self.total_iters += 1
             data = {key: value.to(self.device) for key, value in data.items()}
 
             # Create some masking logic for padding
@@ -147,7 +149,7 @@ class ReactivityTrainer(nn.Module):
                 sum_acc_10, sum_acc_20, sum_gnorm = 0.0, 0.0, 0.0
                 avg_loss = 0.0
 
-            if (i+1) % 1 == 0:
+            if (self.total_iters) % 10000 == 0:
                 for param_group in self.optimizer.param_groups:
                     param_group['lr'] = self.lr * 0.9
         if not train:
