@@ -25,7 +25,8 @@ class ReactivityNet(nn.Module):
         masked_scores = torch.where((blabels == -1.0), pair_scores - 10000, pair_scores)
         _, top_k = torch.topk(torch.flatten(masked_scores, start_dim=1, end_dim=-1), 20)
         bond_labels = F.relu(blabels)
-        loss = F.binary_cross_entropy_with_logits(pair_scores, bond_labels, reduction='none')
+        pos_weight = torch.where(bond_labels == 1.0, 10.0 * torch.ones_like(bond_labels), torch.ones_like(bond_labels))
+        loss = F.binary_cross_entropy_with_logits(pair_scores, bond_labels, reduction='none', pos_weight=pos_weight)
         loss *= torch.ne(blabels, -1).float()
         return pair_scores, top_k, loss
 
@@ -48,11 +49,11 @@ class ReactivityTrainer(nn.Module):
         logging.info("Total Parameters: {:,d}".format(sum([p.nelement() for p in self.model.parameters()])))
 
     def train_epoch(self, epoch, data_loader):
-        #self.model.train()
+        self.model.train()
         self.iterate(epoch, data_loader)
 
     def test_epoch(self, epoch, data_loader):
-        #self.model.eval()
+        self.model.eval()
         self.iterate(epoch, data_loader, train=False)
 
     def iterate(self, epoch, data_loader, train=True):
