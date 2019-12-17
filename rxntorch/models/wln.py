@@ -13,19 +13,13 @@ class WLNet(nn.Module):
         self.fc2atom_nei = Linear(hidden_size, hidden_size, bias=False)
         self.fc2bond_nei = Linear(bfeats_size, hidden_size, bias=False)
         self.fc2 = Linear(hidden_size, hidden_size, bias=False)
-        #self.mask_neis_comp = torch.arange(0, 10, dtype=torch.int32).view(1,1,-1)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def forward(self, atom_feats, bond_feats, atom_graph, bond_graph, num_nbs, n_atoms, mask_neis, mask_atoms):
         atom_feats = F.relu(self.fc1(atom_feats))
-        bondnei_feats = torch.stack([bond_feats[i,bond_graph[i,...,1],:] for i in range(atom_feats.shape[0])])
-        # Creates tensors to mask padded neighbors and atoms
-        #mask_neis = torch.unsqueeze(num_nbs.unsqueeze(-1) > torch.arange(0, 10, dtype=torch.int32, device=self.device).view(1,1,-1), -1)
-        #max_n_atoms = n_atoms.max()
-        #mask_atoms = torch.unsqueeze(n_atoms.unsqueeze(-1) > torch.arange(0, max_n_atoms, dtype=torch.int32, device=self.device).view(1,-1), -1)
+        bondnei_feats = torch.stack([bond_feats[i,bond_graph[i],:] for i in range(atom_feats.shape[0])])
         for i in range(self.depth):
-            #atomnei_feats = atom_feats[atom_graph[:,:,:,0],atom_graph[:,:,:,1],:]
-            atomnei_feats = torch.stack([atom_feats[i,atom_graph[i,...,1],:] for i in range(atom_feats.shape[0])])
+            atomnei_feats = torch.stack([atom_feats[i,atom_graph[i],:] for i in range(atom_feats.shape[0])])
             if (i + 1) == self.depth:
                 atomnei_feats = self.fc2atom_nei(atomnei_feats)
                 bondnei_feats = self.fc2bond_nei(bondnei_feats)
