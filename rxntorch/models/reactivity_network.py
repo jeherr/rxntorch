@@ -149,9 +149,11 @@ class ReactivityTrainer(nn.Module):
                 sum_acc_10, sum_acc_20, sum_gnorm = 0.0, 0.0, 0.0
                 avg_loss = 0.0
 
-            if (self.total_iters) % 5000 == 0:
+            if (self.total_iters) % 10000 == 0:
                 for param_group in self.optimizer.param_groups:
                     param_group['lr'] *= 0.9
+                logging.info("Learning rate changed to {:f}".format(
+                    self.optimizer.param_groups[0]['lr']))
         if not train:
             logging.info("-----Testing summary-----")
             logging.info("Epoch: {:2d}  Average loss: {:f}  Accuracy @10: {:6.2%}  @20: {:6.2%}".format(epoch,
