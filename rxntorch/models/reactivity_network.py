@@ -28,21 +28,24 @@ class ReactivityNet(nn.Module):
 
 
 class ReactivityTrainer(nn.Module):
-    def __init__(self, rxn_net, lr=1e-4, betas=(0.9, 0.999), weight_decay=0.01,
-                 with_cuda=True, cuda_devices=None, log_freq=10, grad_clip=None, pos_weight=1.0):
+    def __init__(self, rxn_net, lr=1e-4, betas=(0.9, 0.999), weight_decay=0.01, with_cuda=True,
+                 cuda_devices=None, log_freq=10, grad_clip=None, pos_weight=1.0, lr_decay=0.9,
+                 lr_steps=10000):
         super(ReactivityTrainer, self).__init__()
         cuda_condition = torch.cuda.is_available() and with_cuda
-        self.device = torch.device("cuda:0" if cuda_condition else "cpu")
+        self.device = torch.device("cuda" if cuda_condition else "cpu")
         self.model = rxn_net
-        if with_cuda and torch.cuda.device_count() > 1:
+        if cuda_condition and (torch.cuda.device_count() > 1):
             logging.info("Using {} GPUS".format(torch.cuda.device_count()))
             self.model = nn.DataParallel(self.model, device_ids=cuda_devices)
+        self.model.to(self.device)
         self.lr = lr
+        self.lr_decay = lr_decay
+        self.lr_steps = lr_steps
         self.grad_clip = grad_clip
         self.log_freq = log_freq
         self.pos_weight = pos_weight
         self.total_iters = 0
-        self.model.to(self.device)
         self.optimizer = opt.Adam(self.model.parameters(), lr=self.lr, betas=betas, weight_decay=weight_decay)
         logging.info("Total Parameters: {:,d}".format(sum([p.nelement() for p in self.model.parameters()])))
 
@@ -149,9 +152,9 @@ class ReactivityTrainer(nn.Module):
                 sum_acc_10, sum_acc_20, sum_gnorm = 0.0, 0.0, 0.0
                 avg_loss = 0.0
 
-            if (self.total_iters) % 10000 == 0:
+            if self.total_iters % self.lr_steps == 0:
                 for param_group in self.optimizer.param_groups:
-                    param_group['lr'] *= 0.9
+                    param_group['lr'] *= self.lr_decay
                 logging.info("Learning rate changed to {:f}".format(
                     self.optimizer.param_groups[0]['lr']))
         if not train:

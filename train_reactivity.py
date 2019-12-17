@@ -22,7 +22,12 @@ parser.add_argument("-bt", "--batch_size_test", type=int, default=None, help="ba
 parser.add_argument("-e", "--epochs", type=int, default=10, help="number of epochs")
 parser.add_argument("-hs", "--hidden", type=int, default=300, help="hidden size of model layers")
 parser.add_argument("-l", "--layers", type=int, default=3, help="number of layers")
-parser.add_argument("--lr", type=float, default=1e-3, help="learning rate of adam")
+
+parser.add_argument("--lr", type=float, default=1e-3, help="learning rate of the optimizer")
+parser.add_argument("-lrd", "--lr_decay", type=float, default=0.9,
+                    help="Decay factor for reducing the learning rate")
+parser.add_argument("-lrs", "--lr_steps", type=int, default=10000,
+                    help="Number of steps between learning rate decay")
 parser.add_argument("--adam_weight_decay", type=float, default=0.00, help="weight_decay of adam")
 parser.add_argument("--adam_beta1", type=float, default=0.9, help="adam first beta value")
 parser.add_argument("--adam_beta2", type=float, default=0.999, help="adam second beta value")
@@ -76,7 +81,8 @@ net = RxnNet(depth=args.layers, afeats_size=afeats_size, bfeats_size=bfeats_size
 logging.info("Creating Trainer")
 trainer = RxnTrainer(net, lr=args.lr, betas=(args.adam_beta1, args.adam_beta2), weight_decay=args.adam_weight_decay,
                      with_cuda=args.with_cuda, cuda_devices=args.cuda_devices, log_freq=args.log_freq,
-                     grad_clip=args.grad_clip, pos_weight=args.pos_weight)
+                     grad_clip=args.grad_clip, pos_weight=args.pos_weight, lr_decay=args.lr_decay,
+                     lr_steps=args.lr_steps)
 
 logging.info("Training Start")
 for epoch in range(args.epochs):
