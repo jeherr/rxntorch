@@ -3,7 +3,7 @@ import logging
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.optim import Adam
+import torch.optim as opt
 
 from .wln import WLNet
 from .attention import Attention
@@ -39,11 +39,11 @@ class ReactivityTrainer(nn.Module):
             self.model = nn.DataParallel(self.model, device_ids=cuda_devices)
         self.lr = lr
         self.grad_clip = grad_clip
-        self.optimizer = Adam(self.model.parameters(), lr=self.lr, betas=betas, weight_decay=weight_decay)
         self.log_freq = log_freq
         self.pos_weight = pos_weight
         self.total_iters = 0
         self.model.to(self.device)
+        self.optimizer = opt.Adam(self.model.parameters(), lr=self.lr, betas=betas, weight_decay=weight_decay)
         logging.info("Total Parameters: {:,d}".format(sum([p.nelement() for p in self.model.parameters()])))
 
     def train_epoch(self, epoch, data_loader):
@@ -149,9 +149,9 @@ class ReactivityTrainer(nn.Module):
                 sum_acc_10, sum_acc_20, sum_gnorm = 0.0, 0.0, 0.0
                 avg_loss = 0.0
 
-            if (self.total_iters) % 10000 == 0:
+            if (self.total_iters) % 5000 == 0:
                 for param_group in self.optimizer.param_groups:
-                    param_group['lr'] = self.lr * 0.9
+                    param_group['lr'] *= 0.9
         if not train:
             logging.info("-----Testing summary-----")
             logging.info("Epoch: {:2d}  Average loss: {:f}  Accuracy @10: {:6.2%}  @20: {:6.2%}".format(epoch,
@@ -159,7 +159,7 @@ class ReactivityTrainer(nn.Module):
 
     def save(self, epoch, file_path="output/trained.model"):
         """
-        Saving the current BERT model on file_path
+        Saving the current model on file_path
         :param epoch: current epoch number
         :param file_path: model output path which gonna be file_path+"ep%d" % epoch
         :return: final_output_path
