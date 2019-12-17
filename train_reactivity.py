@@ -29,11 +29,11 @@ parser.add_argument("-lrd", "--lr_decay", type=float, default=0.9,
                     help="Decay factor for reducing the learning rate")
 parser.add_argument("-lrs", "--lr_steps", type=int, default=10000,
                     help="Number of steps between learning rate decay")
-parser.add_argument("--adam_weight_decay", type=float, default=0.00, help="weight_decay of adam")
+parser.add_argument("--adam_weight_decay", type=float, default=0.0, help="weight_decay of adam")
 parser.add_argument("--adam_beta1", type=float, default=0.9, help="adam first beta value")
 parser.add_argument("--adam_beta2", type=float, default=0.999, help="adam second beta value")
 parser.add_argument("-gc", "--grad_clip", type=float, default=None, help="value for gradient clipping")
-parser.add_argument("-pw", "--pos_weight", type=float, default=1.0, help="Weights positive samples for imbalance")
+parser.add_argument("-pw", "--pos_weight", type=float, default=None, help="Weights positive samples for imbalance")
 
 parser.add_argument("-w", "--num_workers", type=int, default=4, help="dataloader worker size")
 parser.add_argument("--with_cuda", type=bool, default=True, help="training with CUDA: true, or false")
@@ -53,42 +53,48 @@ logging.basicConfig(level=logging.INFO, style='{', format="{asctime:s}: {message
                     datefmt="%m/%d/%Y %I:%M:%S %p", handlers=(
                     logging.FileHandler(logpath), logging.StreamHandler()))
 
+logging.info("{:-^80}".format("Dataset"))
 dataset = RxnGD(args.train_dataset, path=args.dataset_path)
-n_samples = len(dataset)
 sample = dataset[0]
 afeats_size, bfeats_size, binary_size = (sample["atom_feats"].shape[-1], sample["bond_feats"].shape[-1],
                                         sample["binary_feats"].shape[-1])
 
-n_test = int(n_samples * 0.2)
+n_samples = len(dataset)
+n_test = int(n_samples * args.test_split)
 n_train = n_samples - n_test
 logging.info("Splitting dataset into {:d} samples for training and {:d} samples for testing".format(
     n_train, n_test))
 train_set, test_set = random_split(dataset, (n_train, n_test))
 
-logging.info("Creating Dataloaders")
+logging.info("{:-^80}".format("Data loaders"))
+logging.info("Batch size: {:d}  Workers: {:d}  Shuffle per epoch: {}".format(
+    args.batch_size, args.num_workers, True))
+logging.info("Drop incomplete batches: {}".format(True))
 train_dataloader = DataLoader(train_set, batch_size=args.batch_size, num_workers=args.num_workers, shuffle=True,
-                              collate_fn=collate_fn)
+                              collate_fn=collate_fn, drop_last=True)
 test_batch_size = args.test_batch_size if args.test_batch_size is not None else args.batch_size
 test_dataloader = DataLoader(test_set, batch_size=test_batch_size, num_workers=args.num_workers, collate_fn=collate_fn)
 
 
-logging.info("Building Reaction scoring model")
-logging.info("-----Model hyperparameters-----")
-logging.info("Graph convolution layers: {}  Hidden size: {}  Batch size: {}  Epochs: {}".format(
+logging.info("{:-^80}".format("Model"))
+logging.info("Graph convolution layers: {}  Hidden size: {}".format(
     args.layers, args.hidden, args.batch_size, args.epochs))
-logging.info("Learning rate: {}  Weight decay: {}  Gradient clipping: {}".format(
-    args.lr, args.adam_weight_decay, args.grad_clip))
 net = RxnNet(depth=args.layers, afeats_size=afeats_size, bfeats_size=bfeats_size,
              hidden_size=args.hidden, binary_size=binary_size)
+logging.info("Total Parameters: {:,d}".format(sum([p.nelement() for p in net.parameters()])))
 
-logging.info("Creating Trainer")
+logging.info("{:-^80}".format("Trainer"))
+logging.info("Optimizer: {}  Beta1: {}  Beta2: {}".format("Adam", args.adam_beta1, args.adam_beta2))
+logging.info("Learning rate: {}  Learning rate decay: {}  Steps between updates: {}".format(
+    args.lr, args.lr_decay, args.lr_steps))
+logging.info("Weight decay: {}  Gradient clipping: {}  Positive sample weighting: {}".format(
+    args.adam_weight_decay, args.grad_clip, args.pos_weight))
 trainer = RxnTrainer(net, lr=args.lr, betas=(args.adam_beta1, args.adam_beta2), weight_decay=args.adam_weight_decay,
                      with_cuda=args.with_cuda, cuda_devices=args.cuda_devices, log_freq=args.log_freq,
                      grad_clip=args.grad_clip, pos_weight=args.pos_weight, lr_decay=args.lr_decay,
                      lr_steps=args.lr_steps)
 
-logging.info("Training Start")
 for epoch in range(args.epochs):
     trainer.train_epoch(epoch, train_dataloader)
-    trainer.save(epoch, outputfile)
+    trainer.save(epoch, args.output_name, args.output_path)
     trainer.test_epoch(epoch, test_dataloader)

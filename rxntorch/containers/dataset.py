@@ -97,7 +97,7 @@ class RxnGraphDataset(RxnDataset):
         self.max_nbonds = 10
 
     def _init_dataset(self):
-        logging.info("Loading Training Dataset {dataset} in {datapath}".format(
+        logging.info("Loading Dataset {dataset} in {datapath}".format(
             dataset=self.file_name, datapath=self.path))
         symbols = set()
         degrees = set()

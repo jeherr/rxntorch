@@ -1,4 +1,5 @@
 import logging
+import os
 
 import torch
 import torch.nn as nn
@@ -47,13 +48,14 @@ class ReactivityTrainer(nn.Module):
         self.pos_weight = pos_weight
         self.total_iters = 0
         self.optimizer = opt.Adam(self.model.parameters(), lr=self.lr, betas=betas, weight_decay=weight_decay)
-        logging.info("Total Parameters: {:,d}".format(sum([p.nelement() for p in self.model.parameters()])))
 
     def train_epoch(self, epoch, data_loader):
+        logging.info("{:-^80}".format("Training"))
         self.model.train()
         self.iterate(epoch, data_loader)
 
     def test_epoch(self, epoch, data_loader):
+        logging.info("{:-^80}".format("Testing"))
         self.model.eval()
         self.iterate(epoch, data_loader, train=False)
 
@@ -80,8 +82,11 @@ class ReactivityTrainer(nn.Module):
                                                     data['binary_feats'], data['bond_labels'], mask_neis, mask_atoms)
 
             bond_labels = F.relu(data['bond_labels'])
-            pos_weight = torch.where(bond_labels == 1.0, self.pos_weight * torch.ones_like(bond_labels),
-                                     torch.ones_like(bond_labels))
+            if self.pos_weight is not None:
+                pos_weight = torch.where(bond_labels == 1.0, self.pos_weight * torch.ones_like(bond_labels),
+                                        torch.ones_like(bond_labels))
+            else:
+                pos_weight = None
             loss = F.binary_cross_entropy_with_logits(pair_scores, bond_labels, reduction='none', pos_weight=pos_weight)
             loss *= torch.ne(data['bond_labels'], -1).float()
             loss = torch.mean(loss)
@@ -158,13 +163,12 @@ class ReactivityTrainer(nn.Module):
                 logging.info("Learning rate changed to {:f}".format(
                     self.optimizer.param_groups[0]['lr']))
         if not train:
-            logging.info("-----Testing summary-----")
             logging.info("Epoch: {:2d}  Average loss: {:f}  Accuracy @10: {:6.2%}  @20: {:6.2%}".format(epoch,
                 test_loss / iters, test_acc10 / (iters * batch_size), test_acc20 / (iters * batch_size)))
 
-    def save(self, epoch, file_path="output/trained.model"):
-        output_path = file_path + ".ep%d" % epoch
-        torch.save(self.model.cpu(), output_path)
+    def save(self, epoch, filename, path):
+        filename = filename + ".ep%d" % epoch
+        output = os.path.join(path, filename)
+        torch.save(self.model.cpu(), output)
         self.model.to(self.device)
-        print("EP:%d Model Saved on:" % epoch, output_path)
-        return output_path
+        logging.info("Model saved to {} in {}:".format(filename, path))
