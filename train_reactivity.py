@@ -19,7 +19,7 @@ parser.add_argument("-o", "--output_name", required=True, type=str, help="e.g. r
 parser.add_argument("-ds", "--test_split", type=float, default=0.2, help="Ratio of samples to reserve for test data")
 
 parser.add_argument("-b", "--batch_size", type=int, default=20, help="number of batch_size")
-parser.add_argument("-bt", "--batch_size_test", type=int, default=None, help="batch size for evaluation")
+parser.add_argument("-tb", "--test_batch_size", type=int, default=None, help="batch size for evaluation")
 parser.add_argument("-e", "--epochs", type=int, default=10, help="number of epochs")
 parser.add_argument("-hs", "--hidden", type=int, default=300, help="hidden size of model layers")
 parser.add_argument("-l", "--layers", type=int, default=3, help="number of layers")
@@ -61,13 +61,15 @@ afeats_size, bfeats_size, binary_size = (sample["atom_feats"].shape[-1], sample[
 
 n_test = int(n_samples * 0.2)
 n_train = n_samples - n_test
-logging.info("Splitting dataset in {} samples for training and {} samples for testing".format(
+logging.info("Splitting dataset into {:d} samples for training and {:d} samples for testing".format(
     n_train, n_test))
 train_set, test_set = random_split(dataset, (n_train, n_test))
 
 logging.info("Creating Dataloaders")
-train_dataloader = DataLoader(train_set, batch_size=args.batch_size, num_workers=args.num_workers, collate_fn=collate_fn)
-test_dataloader = DataLoader(test_set, batch_size=args.batch_size, num_workers=args.num_workers, collate_fn=collate_fn)
+train_dataloader = DataLoader(train_set, batch_size=args.batch_size, num_workers=args.num_workers, shuffle=True,
+                              collate_fn=collate_fn)
+test_batch_size = args.test_batch_size if args.test_batch_size is not None else args.batch_size
+test_dataloader = DataLoader(test_set, batch_size=test_batch_size, num_workers=args.num_workers, collate_fn=collate_fn)
 
 
 logging.info("Building Reaction scoring model")

@@ -133,8 +133,8 @@ class ReactivityTrainer(nn.Module):
                         "pnorm": param_norm,
                         "gnorm": sum_gnorm
                     }
-                    logging.info(("Epoch: {epoch:2d}  Iteration: {iter:6,d}/{iters:,d}  Average loss: {avg_loss:f}  "
-                        "Accuracy @10: {acc10:6.2%}  @20: {acc20:6.2%}  Param norm: {pnorm:8.4f}  "
+                    logging.info(("Epoch: {epoch:2d}  Iteration: {iter:6,d}/{iters:,d}  Avg loss: {avg_loss:f}  "
+                        "Acc @10: {acc10:6.2%}  @20: {acc20:6.2%}  Param norm: {pnorm:8.4f}  "
                         "Grad norm: {gnorm:8.4f}").format(
                         **post_fix))
                 else:
@@ -146,8 +146,8 @@ class ReactivityTrainer(nn.Module):
                         "acc10": sum_acc_10 / (self.log_freq * batch_size),
                         "acc20": sum_acc_20 / (self.log_freq * batch_size)
                     }
-                    logging.info(("Epoch: {epoch:2d}  Iteration: {iter:6,d}/{iters:,d}  Average loss: {avg_loss:f}  "
-                        "Accuracy @10: {acc10:6.2%}  @20: {acc20:6.2%}").format(
+                    logging.info(("Epoch: {epoch:2d}  Iteration: {iter:6,d}/{iters:,d}  Avg loss: {avg_loss:f}  "
+                        "Acc @10: {acc10:6.2%}  @20: {acc20:6.2%}").format(
                         **post_fix))
                 sum_acc_10, sum_acc_20, sum_gnorm = 0.0, 0.0, 0.0
                 avg_loss = 0.0
