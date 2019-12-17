@@ -2,6 +2,7 @@ from __future__ import print_function
 from __future__ import division
 
 import os
+import logging
 import rdkit.Chem as Chem
 from sklearn.preprocessing import LabelEncoder
 
@@ -96,6 +97,8 @@ class RxnGraphDataset(RxnDataset):
         self.max_nbonds = 10
 
     def _init_dataset(self):
+        logging.info("Loading Training Dataset {dataset} in {datapath}".format(
+            dataset=self.file_name, datapath=self.path))
         symbols = set()
         degrees = set()
         explicit_valences = set()
@@ -115,6 +118,7 @@ class RxnGraphDataset(RxnDataset):
                 for bond in mol.GetBonds():
                     bond_types.add(bond.GetBondType())
         symbols.add("unknown")
+        logging.info("Dataset contains {:d} total samples".format(len(self.rxns)))
 
         self.degree_codec.fit(list(degrees))
         self.symbol_codec.fit(list(symbols))

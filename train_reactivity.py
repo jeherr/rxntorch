@@ -16,6 +16,7 @@ parser.add_argument("-c", "--train_dataset", required=True, type=str, help="trai
 parser.add_argument("-t", "--test_dataset", type=str, default=None, help="test set")
 parser.add_argument("-op", "--output_path", type=str, default='./saved_models/', help="saved model path")
 parser.add_argument("-o", "--output_name", required=True, type=str, help="e.g. rxntorch.model")
+parser.add_argument("-ds", "--test_split", type=float, default=0.2, help="Ratio of samples to reserve for test data")
 
 parser.add_argument("-b", "--batch_size", type=int, default=20, help="number of batch_size")
 parser.add_argument("-bt", "--batch_size_test", type=int, default=None, help="batch size for evaluation")
@@ -52,8 +53,6 @@ logging.basicConfig(level=logging.INFO, style='{', format="{asctime:s}: {message
                     datefmt="%m/%d/%Y %I:%M:%S %p", handlers=(
                     logging.FileHandler(logpath), logging.StreamHandler()))
 
-logging.info("Loading Training Dataset {dataset} in {datapath}".format(
-    dataset=args.train_dataset, datapath=args.dataset_path))
 dataset = RxnGD(args.train_dataset, path=args.dataset_path)
 n_samples = len(dataset)
 sample = dataset[0]
@@ -62,6 +61,8 @@ afeats_size, bfeats_size, binary_size = (sample["atom_feats"].shape[-1], sample[
 
 n_test = int(n_samples * 0.2)
 n_train = n_samples - n_test
+logging.info("Splitting dataset in {} samples for training and {} samples for testing".format(
+    n_train, n_test))
 train_set, test_set = random_split(dataset, (n_train, n_test))
 
 logging.info("Creating Dataloaders")

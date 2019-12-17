@@ -163,12 +163,6 @@ class ReactivityTrainer(nn.Module):
                 test_loss / iters, test_acc10 / (iters * batch_size), test_acc20 / (iters * batch_size)))
 
     def save(self, epoch, file_path="output/trained.model"):
-        """
-        Saving the current model on file_path
-        :param epoch: current epoch number
-        :param file_path: model output path which gonna be file_path+"ep%d" % epoch
-        :return: final_output_path
-        """
         output_path = file_path + ".ep%d" % epoch
         torch.save(self.model.cpu(), output_path)
         self.model.to(self.device)
