@@ -1,5 +1,6 @@
 import logging
 import os
+import math
 
 import torch
 import torch.nn as nn
@@ -19,13 +20,24 @@ class ReactivityNet(nn.Module):
         self.attention = Attention(hidden_size, binary_size)
         self.reactivity_scoring = ReactivityScoring(hidden_size, binary_size)
 
-    def forward(self, fatoms, fbonds, atom_nb, bond_nb, num_nbs, n_atoms, binary_feats, blabels, mask_neis, mask_atoms):
+    def forward(self, fatoms, fbonds, atom_nb, bond_nb, num_nbs, n_atoms, binary_feats, mask_neis, mask_atoms, sparse_idx):
         local_features = self.wln(fatoms, fbonds, atom_nb, bond_nb, num_nbs, n_atoms, mask_neis, mask_atoms)
-        local_pair, global_pair = self.attention(local_features, binary_feats)
-        pair_scores = self.reactivity_scoring(local_pair, global_pair, binary_feats)
-        masked_scores = torch.where((blabels == -1.0), pair_scores - 10000, pair_scores)
-        _, top_k = torch.topk(torch.flatten(masked_scores, start_dim=1, end_dim=-1), 20)
-        return pair_scores, top_k
+        local_pair, global_pair = self.attention(local_features, binary_feats, sparse_idx)
+        pair_scores = self.reactivity_scoring(local_pair, global_pair, binary_feats, sparse_idx)
+        #masked_scores = torch.where((blabels == -1.0), pair_scores - 10000, pair_scores)
+        sample_idxs = [torch.where(sparse_idx[:,0] == i)[0] for i in range(local_features.shape[0])]
+        print([sample_idx.shape for sample_idx in sample_idxs])
+        sample_scores = [pair_scores[sample_idx] for sample_idx in sample_idxs]
+        sample_topks = [torch.topk(sample_score.flatten(), 20) for sample_score in sample_scores]
+        pair_scores = torch.cat(sample_scores, dim=0)
+        topks = torch.stack([topk for (_, topk) in sample_topks], dim=0)
+        return pair_scores, topks
+
+
+class ReactivityNetBonds(nn.Module):
+    def __init__(self, depth, afeats_size, bfeats_size, hidden_size, binary_size):
+        super(ReactivityNetBonds, self).__init__()
+        self.wln = WLNetBonds(depth, afeats_size, bfeats_size, hidden_size)
 
 
 class ReactivityTrainer(nn.Module):
@@ -79,16 +91,14 @@ class ReactivityTrainer(nn.Module):
 
             pair_scores, top_k = self.model.forward(data['atom_feats'], data['bond_feats'], data['atom_graph'],
                                                     data['bond_graph'], data['n_bonds'], data['n_atoms'],
-                                                    data['binary_feats'], data['bond_labels'], mask_neis, mask_atoms)
+                                                    data['binary_feats'], mask_neis, mask_atoms, data['sparse_idx'])
 
-            bond_labels = F.relu(data['bond_labels'])
             if self.pos_weight is not None:
                 pos_weight = torch.where(bond_labels == 1.0, self.pos_weight * torch.ones_like(bond_labels),
                                         torch.ones_like(bond_labels))
             else:
                 pos_weight = None
-            loss = F.binary_cross_entropy_with_logits(pair_scores, bond_labels, reduction='none', pos_weight=pos_weight)
-            loss *= torch.ne(data['bond_labels'], -1).float()
+            loss = F.binary_cross_entropy_with_logits(pair_scores, data['bond_labels'], reduction='none', pos_weight=pos_weight)
             loss = torch.mean(loss)
             avg_loss += loss.item()
             test_loss += loss.item()
@@ -104,14 +114,14 @@ class ReactivityTrainer(nn.Module):
                     nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
                 self.optimizer.step()
             # Gather the indices of bond labels where a bond changes to calculate accuracy
-            sp_labels = torch.stack(torch.where(torch.flatten(data['bond_labels'],
-                                                              start_dim=1, end_dim=-1) == 1), dim=-1)
-
+            sp_labels = torch.stack(torch.where(data['bond_labels'] == 1), dim=-1)
+            #print(sp_labels)
             batch_size, nk = top_k.shape[0], top_k.shape[1]
             sp_top_k = torch.empty((batch_size * nk, 2), dtype=torch.int64, device=self.device)
             for j in range(batch_size):
                 for k in range(nk):
                     sp_top_k[j * nk + k, 0], sp_top_k[j * nk + k, 1] = j, top_k[j, k]
+            #print(sp_top_k)
             mol_label_idx = [torch.where(sp_labels[:,0] == i)[0] for i in range(batch_size)]
             mol_topk_idx = [torch.where(sp_top_k[:,0] == i)[0] for i in range(batch_size)]
             mol_labels = [sp_labels[idx,1] for idx in mol_label_idx]

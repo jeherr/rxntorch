@@ -13,7 +13,6 @@ class WLNet(nn.Module):
         self.fc2atom_nei = Linear(hidden_size, hidden_size, bias=False)
         self.fc2bond_nei = Linear(bfeats_size, hidden_size, bias=False)
         self.fc2 = Linear(hidden_size, hidden_size, bias=False)
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def forward(self, atom_feats, bond_feats, atom_graph, bond_graph, num_nbs, n_atoms, mask_neis, mask_atoms):
         atom_feats = F.relu(self.fc1(atom_feats))
@@ -36,4 +35,31 @@ class WLNet(nn.Module):
         return local_feats
 
 
+class WLNetBonds(WLNet):
+    def __init__(self, depth, afeats_size, bfeats_size, hidden_size):
+        self.fc1b = Linear(bfeats_size, hidden_size)
+        bfeats_size = hidden_size
+        super(WLNetBonds, self).__init__()
+
+    def forward(self, atom_feats, bond_feats, atom_graph, bond_graph, num_nbs, n_atoms, mask_neis, mask_atoms):
+        atom_feats = F.relu(self.fc1(atom_feats))
+        bond_feats = F.relu(self.fc1b(bond_feats))
+        for i in range(self.depth):
+            bondnei_feats = torch.stack([bond_feats[i,bond_graph[i]] for i in range(atom_feats.shape[0])])
+            atomnei_feats = torch.stack([atom_feats[i,atom_graph[i]] for i in range(atom_feats.shape[0])])
+            if (i + 1) == self.depth:
+                atomnei_feats = self.fc2atom_nei(atomnei_feats)
+                bondnei_feats = self.fc2bond_nei(bondnei_feats)
+                nei_feats = atomnei_feats * bondnei_feats
+                nei_feats = torch.where(mask_neis, nei_feats, torch.zeros_like(nei_feats)).sum(-2)
+                self_feats = self.fc2(atom_feats)
+                local_feats = self_feats * nei_feats
+                local_feats = torch.where(mask_atoms, local_feats, torch.zeros_like(local_feats))
+            else:
+                nei_feats = F.relu(self.graph_conv_nei(torch.cat([atomnei_feats, bondnei_feats], dim=-1)))
+                nei_feats = torch.where(mask_neis, nei_feats, torch.zeros_like(nei_feats)).sum(-2)
+                update_feats = torch.cat([atom_feats, nei_feats], dim=-1)
+                atom_feats = F.relu(self.graph_conv_atom(update_feats))
+
+        return local_feats
 
