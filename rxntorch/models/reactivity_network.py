@@ -27,8 +27,6 @@ class ReactivityNet(nn.Module):
         sample_idxs = [torch.where(sparse_idx[:,0] == i)[0] for i in range(local_features.shape[0])]
         sample_scores = [pair_scores[sample_idx] for sample_idx in sample_idxs]
         sample_topks = [torch.topk(sample_score.flatten(), 20) for sample_score in sample_scores]
-        #unraveled_idxs = [torch.stack(((sample_topk[1]) / 5, (sample_topk[1]) % 5),
-        #                              dim=1) for sample_topk in sample_topks]
         topks = torch.stack([topk for (_, topk) in sample_topks], dim=0)
         return pair_scores, topks, sample_idxs
 
@@ -77,7 +75,6 @@ class ReactivityTrainer(nn.Module):
         test_loss, test_acc10, test_acc20 = 0.0, 0.0, 0.0
 
         for i, data in enumerate(data_loader):
-            self.total_iters += 1
             data = {key: value.to(self.device) for key, value in data.items()}
 
             # Create some masking logic for padding
@@ -101,8 +98,8 @@ class ReactivityTrainer(nn.Module):
             avg_loss += loss.item()
             test_loss += loss.item()
 
-            # 3. backward and optimization only in train
             if train:
+                self.total_iters += 1
                 self.optimizer.zero_grad()
                 loss.backward()
                 param_norm = torch.sqrt(sum([torch.sum(param ** 2) for param in self.model.parameters()])).item()
@@ -112,7 +109,6 @@ class ReactivityTrainer(nn.Module):
                     nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
                 self.optimizer.step()
 
-            # Gather the indices of bond labels where a bond changes to calculate accuracy
             batch_size = len(sample_idxs)
             bond_labels = [data['bond_labels'][sample_idx] for sample_idx in sample_idxs]
             sp_labels = [torch.stack(torch.where(bond_label.flatten() == 1), dim=-1) for bond_label in bond_labels]
@@ -122,21 +118,6 @@ class ReactivityTrainer(nn.Module):
             all_correct_10 = [mol_hits.all().int() for mol_hits in hits_10]
             all_correct_20 = [mol_hits.all().int() for mol_hits in hits_20]
 
-            #batch_size, nk = top_k.shape[0], top_k.shape[1]
-            #sp_top_k = torch.empty((batch_size * nk, 2), dtype=torch.int64, device=self.device)
-            #for j in range(batch_size):
-            #    for k in range(nk):
-            #        sp_top_k[j * nk + k, 0], sp_top_k[j * nk + k, 1] = j, top_k[j, k]
-            ##print(sp_top_k)
-            #mol_label_idx = [torch.where(sp_labels[:,0] == i)[0] for i in range(batch_size)]
-            #mol_topk_idx = [torch.where(sp_top_k[:,0] == i)[0] for i in range(batch_size)]
-            #mol_labels = [sp_labels[idx,1] for idx in mol_label_idx]
-            #mol_topk = [sp_top_k[idx,1] for idx in mol_topk_idx]
-            #hits_10 = [(mol_labels[i].unsqueeze(0) == mol_topk[i][:10].unsqueeze(1)).any(dim=0) for i in range(batch_size)]
-            #hits_20 = [(mol_labels[i].unsqueeze(0) == mol_topk[i].unsqueeze(1)).any(dim=0) for i in range(batch_size)]
-
-            #all_correct_10 = [mol_hits.all().int() for mol_hits in hits_10]
-            #all_correct_20 = [mol_hits.all().int() for mol_hits in hits_20]
             sum_acc_10 += sum(all_correct_10).item()
             sum_acc_20 += sum(all_correct_20).item()
             test_acc10 += sum(all_correct_10).item()
