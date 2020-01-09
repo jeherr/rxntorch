@@ -8,14 +8,15 @@ class WLNet(nn.Module):
         super(WLNet, self).__init__()
         self.depth = depth
         self.fc1a = Linear(afeats_size, hidden_size, bias=False)
-        self.fc1b = Linear(afeats_size, hidden_size, bias=False)
+        self.fc1b = Linear(bfeats_size, hidden_size, bias=False)
         self.graph_conv_nei = Linear(hidden_size * 2, hidden_size)
         self.graph_conv_atom = Linear(hidden_size * 2, hidden_size)
+        self.graph_conv_bond = Linear(hidden_size * 2, hidden_size)
         self.fc2atom_nei = Linear(hidden_size, hidden_size, bias=False)
-        self.fc2bond_nei = Linear(bfeats_size, hidden_size, bias=False)
+        self.fc2bond_nei = Linear(hidden_size, hidden_size, bias=False)
         self.fc2 = Linear(hidden_size, hidden_size, bias=False)
 
-    def forward(self, atom_feats, bond_feats, atom_graph, bond_graph, num_nbs, n_atoms, mask_neis, mask_atoms):
+    def forward(self, atom_feats, bond_feats, atom_graph, bond_graph, rev_atom_graph, mask_neis, mask_atoms):
         atom_feats = F.relu(self.fc1a(atom_feats))
         bond_feats = F.relu(self.fc1b(bond_feats))
         for i in range(self.depth):
@@ -34,4 +35,8 @@ class WLNet(nn.Module):
                 atom_neigh_feats = torch.where(mask_neis, atom_neigh_feats, torch.zeros_like(atom_neigh_feats)).sum(-2)
                 atom_updates = torch.cat([atom_feats, atom_neigh_feats], dim=-1)
                 atom_feats = F.relu(self.graph_conv_atom(atom_updates))
+
+                bond_neigh_feats = torch.stack([atom_feats[i,rev_atom_graph[i],:] for i in range(bond_feats.shape[0])]).sum(-2)
+                bond_updates = torch.cat([bond_feats, bond_neigh_feats], dim=-1)
+                bond_feats = F.relu(self.graph_conv_bond(bond_updates))
         return local_feats

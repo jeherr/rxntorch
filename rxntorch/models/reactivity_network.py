@@ -19,8 +19,8 @@ class ReactivityNet(nn.Module):
         self.attention = Attention(hidden_size, binary_size)
         self.reactivity_scoring = ReactivityScoring(hidden_size, binary_size)
 
-    def forward(self, fatoms, fbonds, atom_nb, bond_nb, num_nbs, n_atoms, binary_feats, mask_neis, mask_atoms, sparse_idx):
-        local_features = self.wln(fatoms, fbonds, atom_nb, bond_nb, num_nbs, n_atoms, mask_neis, mask_atoms)
+    def forward(self, fatoms, fbonds, atom_nb, bond_nb, rev_atom_graph, binary_feats, mask_neis, mask_atoms, sparse_idx):
+        local_features = self.wln(fatoms, fbonds, atom_nb, bond_nb, rev_atom_graph, mask_neis, mask_atoms)
         local_pair, global_pair = self.attention(local_features, binary_feats, sparse_idx)
         pair_scores = self.reactivity_scoring(local_pair, global_pair, binary_feats, sparse_idx)
         sample_idxs = [torch.where(sparse_idx[:,0] == i)[0] for i in range(local_features.shape[0])]
@@ -74,7 +74,7 @@ class ReactivityTrainer(nn.Module):
 
             # Create some masking logic for padding
             mask_neis = torch.unsqueeze(
-                data['n_bonds'].unsqueeze(-1) > torch.arange(0, 10, dtype=torch.int32, device=self.device).view(1, 1, -1), -1)
+                data['n_neighs'].unsqueeze(-1) > torch.arange(0, 10, dtype=torch.int32, device=self.device).view(1, 1, -1), -1)
             max_n_atoms = data['n_atoms'].max()
             mask_atoms = torch.unsqueeze(
                 data['n_atoms'].unsqueeze(-1) > torch.arange(0, max_n_atoms, dtype=torch.int32, device=self.device).view(1, -1),
@@ -84,6 +84,7 @@ class ReactivityTrainer(nn.Module):
                                                     data['atom_graph'], data['bond_graph'], data['n_bonds'],
                                                     data['n_atoms'], data['binary_feats'], mask_neis, mask_atoms,
                                                     data['sparse_idx'])
+            
             if self.pos_weight is not None:
                 pos_weight = torch.where(data['bond_labels'] == 1.0,
                                          self.pos_weight * torch.ones_like(data['bond_labels']),

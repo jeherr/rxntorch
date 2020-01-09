@@ -18,7 +18,7 @@ def collate_fn(batch_data):
             values = torch.zeros((len(to_stack), max_atoms, max_atoms, to_stack[0].shape[-1]))
             for i, (label, n_atom) in enumerate(zip(to_stack, n_atoms)):
                 values[i,:n_atom,:n_atom] = label
-        elif key == "n_atoms":
+        elif key == "n_atoms" or key == "n_bonds":
             values = torch.tensor([sample[key] for sample in batch_data], dtype=torch.int32)
         elif key == "bond_labels":
             values = torch.cat([sample[key] for sample in batch_data], dim=0)
