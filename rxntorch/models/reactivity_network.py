@@ -1,6 +1,5 @@
 import logging
 import os
-import math
 
 import torch
 import torch.nn as nn
@@ -29,12 +28,6 @@ class ReactivityNet(nn.Module):
         sample_topks = [torch.topk(sample_score.flatten(), 20) for sample_score in sample_scores]
         topks = torch.stack([topk for (_, topk) in sample_topks], dim=0)
         return pair_scores, topks, sample_idxs
-
-
-class ReactivityNetBonds(nn.Module):
-    def __init__(self, depth, afeats_size, bfeats_size, hidden_size, binary_size):
-        super(ReactivityNetBonds, self).__init__()
-        self.wln = WLNetBonds(depth, afeats_size, bfeats_size, hidden_size)
 
 
 class ReactivityTrainer(nn.Module):
@@ -161,7 +154,7 @@ class ReactivityTrainer(nn.Module):
                     self.optimizer.param_groups[0]['lr']))
         if not train:
             logging.info("Epoch: {:2d}  Average loss: {:f}  Accuracy @10: {:6.2%}  @20: {:6.2%}".format(epoch,
-                test_loss / iters, test_acc10 / (iters * batch_size), test_acc20 / (iters * batch_size)))
+                (test_loss / iters), (test_acc10 / (iters * batch_size)), (test_acc20 / (iters * batch_size))))
 
     def save(self, epoch, filename, path):
         filename = filename + ".ep%d" % epoch
