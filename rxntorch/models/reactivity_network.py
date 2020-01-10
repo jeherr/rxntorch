@@ -153,8 +153,9 @@ class ReactivityTrainer(nn.Module):
                 logging.info("Learning rate changed to {:f}".format(
                     self.optimizer.param_groups[0]['lr']))
         if not train:
+            n_test = len(data_loader.dataset)
             logging.info("Epoch: {:2d}  Average loss: {:f}  Accuracy @10: {:6.2%}  @20: {:6.2%}".format(epoch,
-                (test_loss / iters), (test_acc10 / (iters * batch_size)), (test_acc20 / (iters * batch_size))))
+                (test_loss / n_test), (test_acc10 / n_test), (test_acc20 / n_test)))
 
     def save(self, epoch, filename, path):
         filename = filename + ".ep%d" % epoch
