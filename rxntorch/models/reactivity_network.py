@@ -25,7 +25,7 @@ class ReactivityNet(nn.Module):
         pair_scores = self.reactivity_scoring(local_pair, global_pair, binary_feats, sparse_idx)
         sample_idxs = [torch.where(sparse_idx[:,0] == i)[0] for i in range(local_features.shape[0])]
         sample_scores = [pair_scores[sample_idx] for sample_idx in sample_idxs]
-        sample_topks = [torch.topk(sample_score.flatten(), 20) for sample_score in sample_scores]
+        sample_topks = [torch.topk(sample_score.flatten(), 80) for sample_score in sample_scores]
         topks = torch.stack([topk for (_, topk) in sample_topks], dim=0)
         return pair_scores, topks, sample_idxs
 
@@ -62,10 +62,12 @@ class ReactivityTrainer(nn.Module):
         self.iterate(epoch, data_loader, train=False)
 
     def iterate(self, epoch, data_loader, train=True):
-        avg_loss = 0.0
-        sum_acc_10, sum_acc_20, sum_gnorm = 0.0, 0.0, 0.0
+        avg_loss = test_loss = 0.0
+        sum_gnorm = 0.0
+        sum_acc10 = sum_acc12 = sum_acc16 = sum_acc20 = sum_acc40 = sum_acc80 = 0.0
+        test_acc10 = test_acc12 = test_acc16 = test_acc20 = test_acc40 = test_acc80 = 0.0
         iters = len(data_loader)
-        test_loss, test_acc10, test_acc20 = 0.0, 0.0, 0.0
+        n_samples = len(data_loader.dataset)
 
         for i, data in enumerate(data_loader):
             data = {key: value.to(self.device) for key, value in data.items()}
@@ -107,14 +109,30 @@ class ReactivityTrainer(nn.Module):
             sp_labels = [torch.stack(torch.where(bond_label.flatten() == 1), dim=-1) for bond_label in bond_labels]
 
             hits_10 = [(sp_labels[i] == top_k[i][:10].unsqueeze(0)).any(dim=1) for i in range(batch_size)]
-            hits_20 = [(sp_labels[i] == top_k[i].unsqueeze(0)).any(dim=1) for i in range(batch_size)]
+            hits_12 = [(sp_labels[i] == top_k[i][:12].unsqueeze(0)).any(dim=1) for i in range(batch_size)]
+            hits_16 = [(sp_labels[i] == top_k[i][:16].unsqueeze(0)).any(dim=1) for i in range(batch_size)]
+            hits_20 = [(sp_labels[i] == top_k[i][:20].unsqueeze(0)).any(dim=1) for i in range(batch_size)]
+            hits_40 = [(sp_labels[i] == top_k[i][:40].unsqueeze(0)).any(dim=1) for i in range(batch_size)]
+            hits_80 = [(sp_labels[i] == top_k[i].unsqueeze(0)).any(dim=1) for i in range(batch_size)]
             all_correct_10 = [mol_hits.all().int() for mol_hits in hits_10]
+            all_correct_12 = [mol_hits.all().int() for mol_hits in hits_12]
+            all_correct_16 = [mol_hits.all().int() for mol_hits in hits_16]
             all_correct_20 = [mol_hits.all().int() for mol_hits in hits_20]
+            all_correct_40 = [mol_hits.all().int() for mol_hits in hits_40]
+            all_correct_80 = [mol_hits.all().int() for mol_hits in hits_80]
 
-            sum_acc_10 += sum(all_correct_10).item()
-            sum_acc_20 += sum(all_correct_20).item()
+            sum_acc10 += sum(all_correct_10).item()
+            sum_acc12 += sum(all_correct_12).item()
+            sum_acc16 += sum(all_correct_16).item()
+            sum_acc20 += sum(all_correct_20).item()
+            sum_acc40 += sum(all_correct_40).item()
+            sum_acc80 += sum(all_correct_80).item()
             test_acc10 += sum(all_correct_10).item()
+            test_acc12 += sum(all_correct_12).item()
+            test_acc16 += sum(all_correct_16).item()
             test_acc20 += sum(all_correct_20).item()
+            test_acc40 += sum(all_correct_40).item()
+            test_acc80 += sum(all_correct_80).item()
 
             if (i+1) % self.log_freq == 0:
                 if train:
@@ -123,29 +141,39 @@ class ReactivityTrainer(nn.Module):
                         "iter": (i+1),
                         "iters": iters,
                         "avg_loss": avg_loss,
-                        "acc10": sum_acc_10 / (self.log_freq * batch_size),
-                        "acc20": sum_acc_20 / (self.log_freq * batch_size),
+                        "acc10": sum_acc10 / (self.log_freq * batch_size),
+                        "acc12": sum_acc12 / (self.log_freq * batch_size),
+                        "acc16": sum_acc16 / (self.log_freq * batch_size),
+                        "acc20": sum_acc20 / (self.log_freq * batch_size),
+                        "acc40": sum_acc40 / (self.log_freq * batch_size),
+                        "acc80": sum_acc80 / (self.log_freq * batch_size),
                         "pnorm": param_norm,
                         "gnorm": sum_gnorm
                     }
-                    logging.info(("Epoch: {epoch:2d}  Iteration: {iter:6,d}/{iters:,d}  Avg loss: {avg_loss:f}  "
-                        "Acc @10: {acc10:6.2%}  @20: {acc20:6.2%}  Param norm: {pnorm:8.4f}  "
-                        "Grad norm: {gnorm:8.4f}").format(
+                    logging.info(("Epoch: {epoch:2d}  Iter: {iter:5d}  Loss: {avg_loss:7.5f}  Acc @10: {acc10:6.2%}  "
+                        "@12: {acc12:6.2%}  @16: {acc16:6.2%}  @20: {acc20:6.2%}  @40: {acc40:6.2%}  @80: {acc80:6.2%}  "  
+                        "Param norm: {pnorm:8.4f}  Grad norm: {gnorm:8.4f}").format(
                         **post_fix))
                 else:
                     post_fix = {
                         "epoch": epoch,
-                        "iter": (i + 1),
+                        "iter": (i+1),
                         "iters": iters,
                         "avg_loss": avg_loss,
-                        "acc10": sum_acc_10 / (self.log_freq * batch_size),
-                        "acc20": sum_acc_20 / (self.log_freq * batch_size)
+                        "acc10": sum_acc10 / (self.log_freq * batch_size),
+                        "acc12": sum_acc12 / (self.log_freq * batch_size),
+                        "acc16": sum_acc16 / (self.log_freq * batch_size),
+                        "acc20": sum_acc20 / (self.log_freq * batch_size),
+                        "acc40": sum_acc40 / (self.log_freq * batch_size),
+                        "acc80": sum_acc80 / (self.log_freq * batch_size)
                     }
-                    logging.info(("Epoch: {epoch:2d}  Iteration: {iter:6,d}/{iters:,d}  Avg loss: {avg_loss:f}  "
-                        "Acc @10: {acc10:6.2%}  @20: {acc20:6.2%}").format(
+                    logging.info(("Epoch: {epoch:2d}  Iter: {iter:5d}  Loss: {avg_loss:7.5f}  Acc @10: {acc10:6.2%}  "
+                                  "@12: {acc12:6.2%}  @16: {acc16:6.2%}  @20: {acc20:6.2%}  @40: {acc40:6.2%}  "
+                                  "@80: {acc80:6.2%}").format(
                         **post_fix))
-                sum_acc_10, sum_acc_20, sum_gnorm = 0.0, 0.0, 0.0
+                sum_acc10 = sum_acc12 = sum_acc16 = sum_acc20 = sum_acc40 = sum_acc80 = 0.0
                 avg_loss = 0.0
+                sum_gnorm = 0.0
 
             if self.total_iters % self.lr_steps == 0:
                 for param_group in self.optimizer.param_groups:
@@ -153,9 +181,10 @@ class ReactivityTrainer(nn.Module):
                 logging.info("Learning rate changed to {:f}".format(
                     self.optimizer.param_groups[0]['lr']))
         if not train:
-            n_test = len(data_loader.dataset)
-            logging.info("Epoch: {:2d}  Average loss: {:f}  Accuracy @10: {:6.2%}  @20: {:6.2%}".format(epoch,
-                (test_loss / n_test), (test_acc10 / n_test), (test_acc20 / n_test)))
+            logging.info("Epoch: {:2d}  Loss: {:f}  Accuracy @10: {:6.2%}  @12: {:6.2%}  @16: {:6.2%}  "
+                         "@20: {:6.2%}  @40: {:6.2%}  @80: {:6.2%}".format(epoch,
+                (test_loss / n_samples), (test_acc10 / n_samples), (test_acc12 / n_samples), (test_acc16 / n_samples),
+                (test_acc20 / n_samples), (test_acc40 / n_samples), (test_acc80 / n_samples)))
 
     def save(self, epoch, filename, path):
         filename = filename + ".ep%d" % epoch

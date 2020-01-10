@@ -50,7 +50,7 @@ outputfile = os.path.join(args.output_path, args.output_name)
 logfile = '.'.join((args.output_name, "log"))
 logpath = os.path.join(args.output_path, logfile)
 logging.basicConfig(level=logging.INFO, style='{', format="{asctime:s}: {message:s}",
-                    datefmt="%m/%d/%Y %I:%M:%S %p", handlers=(
+                    datefmt="%m/%d/%y %H:%M:%S", handlers=(
                     logging.FileHandler(logpath), logging.StreamHandler()))
 
 logging.info("{:-^80}".format("Dataset"))
