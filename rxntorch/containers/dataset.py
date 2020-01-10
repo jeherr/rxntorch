@@ -140,6 +140,8 @@ class RxnGraphDataset(RxnDataset):
         sparse_idx = torch.tensor(sparse_idx, dtype=torch.int64)
         atom_feats = self.get_atom_features(mol, atom_idx)
         bond_feats = self.get_bond_features(mol)
+        binary_feats = self.get_binary_features(react_smiles, n_atoms)
+        bond_labels = self.get_bond_labels(edits, n_atoms, sparse_idx)
         atom_graph = torch.zeros((n_atoms, self.max_nbonds), dtype=torch.int64)
         bond_graph = torch.zeros((n_atoms, self.max_nbonds), dtype=torch.int64)
         rev_atom_graph = torch.zeros((n_bonds, 2), dtype=torch.int64)
@@ -160,8 +162,6 @@ class RxnGraphDataset(RxnDataset):
             n_neighs[a1] += 1
             n_neighs[a2] += 1
 
-        bond_labels = self.get_bond_labels(edits, n_atoms, sparse_idx)
-        binary_feats = self.get_binary_features(react_smiles, n_atoms)
         output = {"atom_feats": atom_feats,
                   "bond_feats": bond_feats,
                   "atom_graph": atom_graph,
@@ -174,50 +174,6 @@ class RxnGraphDataset(RxnDataset):
                   "binary_feats": binary_feats,
                   "sparse_idx": sparse_idx}
         return output
-
-    #def __getitem__(self, idx):
-    #    rxn, edits, heavy_count = self.rxns[idx]
-    #    react_smiles = '.'.join(filter(None, (rxn.reactants_smile, rxn.reagents_smile)))
-    #    mol = Chem.MolFromSmiles(react_smiles)
-    #    atom_idx = torch.tensor([atom.GetIntProp('molAtomMapNumber')-1 for atom in mol.GetAtoms()], dtype=torch.int64)
-
-    #    n_atoms = mol.GetNumAtoms()
-    #    n_bonds = mol.GetNumBonds()
-    #    atom_feats = self.get_atom_features(mol, atom_idx)
-    #    bond_feats = self.get_bond_features(mol)
-    #    atom_graph = torch.zeros((n_atoms, self.max_nbonds), dtype=torch.int64)
-    #    bond_graph = torch.zeros((n_atoms, self.max_nbonds), dtype=torch.int64)
-    #    rev_atom_graph = torch.zeros((n_bonds, 2), dtype=torch.int64)
-    #    n_neighs = torch.zeros((n_atoms,), dtype=torch.int32)
-
-    #    for bond in mol.GetBonds():
-    #        a1 = bond.GetBeginAtom().GetIntProp('molAtomMapNumber')-1
-    #        a2 = bond.GetEndAtom().GetIntProp('molAtomMapNumber')-1
-    #        idx = bond.GetIdx()
-    #        if n_neighs[a1] == self.max_nbonds or n_neighs[a2] == self.max_nbonds:
-    #            raise Exception(rxn.reactants_smile)
-    #        atom_graph[a1, n_neighs[a1]] = a2
-    #        atom_graph[a2, n_neighs[a2]] = a1
-    #        bond_graph[a1, n_neighs[a1]] = idx
-    #        bond_graph[a2, n_neighs[a2]] = idx
-    #        rev_atom_graph[idx, 0] = a1
-    #        rev_atom_graph[idx, 1] = a2
-    #        n_neighs[a1] += 1
-    #        n_neighs[a2] += 1
-
-    #    bond_labels = self.get_bond_labels(edits, n_atoms)
-    #    binary_feats = self.get_binary_features(react_smiles, n_atoms)
-    #    output = {"atom_feats": atom_feats,
-    #              "bond_feats": bond_feats,
-    #              "atom_graph": atom_graph,
-    #              "bond_graph": bond_graph,
-    #              "rev_atom_graph": rev_atom_graph,
-    #              "n_neighs": n_neighs,
-    #              "n_atoms": n_atoms,
-    #              "n_bonds": n_bonds,
-    #              "bond_labels": bond_labels,
-    #              "binary_feats": binary_feats}
-    #    return output
 
     def get_atom_features(self, mol, atom_idx):
         symbols = [atom.GetSymbol() for atom in mol.GetAtoms()]
@@ -272,23 +228,17 @@ class RxnGraphDataset(RxnDataset):
             a2 = bond.GetEndAtom().GetIntProp('molAtomMapNumber') - 1
             bond_map[(a1, a2)] = bond
 
-        binary_feats = torch.zeros((n_atoms, n_atoms, 10))
+        binary_feats = torch.zeros((n_atoms, n_atoms, 5))
         for i in range(n_atoms):
             for j in range(i+1, n_atoms):
                 if i == j:
                     continue
-                if (i,j) in bond_map:
-                    bond = bond_map[(i,j)]
-                    binary_feats[i,j,1:1+6] = binary_feats[j,i,1:1+6] = self.bond_features(bond)
-                elif (j,i) in bond_map:
-                    bond = bond_map[(j,i)]
-                    binary_feats[i,j,1:1+6] = binary_feats[j,i,1:1+6] = self.bond_features(bond)
-                else:
+                if ((i,j) not in bond_map) and ((j,i) not in bond_map):
                     binary_feats[i,j,0] = binary_feats[j,i,0] = 1.0
-                binary_feats[i,j,-4] = binary_feats[j,i,-4] = 1.0 if comp[i] != comp[j] else 0.0
-                binary_feats[i,j,-3] = binary_feats[j,i,-3] = 1.0 if comp[i] == comp[j] else 0.0
-                binary_feats[i,j,-2] = binary_feats[j,i,-2] = 1.0 if n_comp == 1 else 0.0
-                binary_feats[i,j,-1] = binary_feats[j,i,-1] = 1.0 if n_comp > 1 else 0.0
+                binary_feats[i,j,1] = binary_feats[j,i,1] = 1.0 if comp[i] != comp[j] else 0.0
+                binary_feats[i,j,2] = binary_feats[j,i,2] = 1.0 if comp[i] == comp[j] else 0.0
+                binary_feats[i,j,3] = binary_feats[j,i,3] = 1.0 if n_comp == 1 else 0.0
+                binary_feats[i,j,4] = binary_feats[j,i,4] = 1.0 if n_comp > 1 else 0.0
         return binary_feats
 
     @staticmethod

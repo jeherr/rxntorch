@@ -19,11 +19,15 @@ class ReactivityNet(nn.Module):
         self.attention = Attention(hidden_size, binary_size)
         self.reactivity_scoring = ReactivityScoring(hidden_size, binary_size)
 
-    def forward(self, fatoms, fbonds, atom_nb, bond_nb, rev_atom_graph, binary_feats, mask_neis, mask_atoms, sparse_idx):
-        local_features = self.wln(fatoms, fbonds, atom_nb, bond_nb, rev_atom_graph, mask_neis, mask_atoms)
-        local_pair, global_pair = self.attention(local_features, binary_feats, sparse_idx)
+    def forward(self, fatoms, fbonds, atom_graph, bond_graph, rev_atom_graph, binary_feats, mask_neis, mask_atoms, sparse_idx):
+        atom_local_feats, bond_local_feats = self.wln(fatoms, fbonds, atom_graph, bond_graph, rev_atom_graph, mask_neis, mask_atoms)
+        binary_bonds = torch.zeros((binary_feats.shape[0], binary_feats.shape[1], binary_feats.shape[2], bond_local_feats.shape[-1]))
+        print(bond_graph[0])
+        print(bond_graph.shape)
+        print(bond_local_feats.shape)
+        local_pair, global_pair = self.attention(atom_local_feats, binary_feats, sparse_idx)
         pair_scores = self.reactivity_scoring(local_pair, global_pair, binary_feats, sparse_idx)
-        sample_idxs = [torch.where(sparse_idx[:,0] == i)[0] for i in range(local_features.shape[0])]
+        sample_idxs = [torch.where(sparse_idx[:,0] == i)[0] for i in range(atom_local_feats.shape[0])]
         sample_scores = [pair_scores[sample_idx] for sample_idx in sample_idxs]
         sample_topks = [torch.topk(sample_score.flatten(), 80) for sample_score in sample_scores]
         topks = torch.stack([topk for (_, topk) in sample_topks], dim=0)
