@@ -34,7 +34,6 @@ Finally, clone this repository to your local machine and install
 ```
 git clone git@github.com:nsf-c-cas/rxntorch.git
 cd rxntorch
-python setup.py install
 ```
 
 ## Getting Started
