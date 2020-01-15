@@ -57,7 +57,7 @@ logging.info("{:-^80}".format("Dataset"))
 dataset = RxnGD(args.train_dataset, path=args.dataset_path)
 sample = dataset[0]
 afeats_size, bfeats_size, binary_size = (sample["atom_feats"].shape[-1], sample["bond_feats"].shape[-1],
-                                        sample["binary_feats"].shape[-1])
+                                        sample["binary_feats"].shape[-1]+args.hidden)
 
 n_samples = len(dataset)
 n_test = int(n_samples * args.test_split)
@@ -76,12 +76,8 @@ test_batch_size = args.test_batch_size if args.test_batch_size is not None else 
 test_dataloader = DataLoader(test_set, batch_size=test_batch_size, num_workers=args.num_workers, collate_fn=collate_fn)
 
 
-logging.info("{:-^80}".format("Model"))
-logging.info("Graph convolution layers: {}  Hidden size: {}".format(
-    args.layers, args.hidden, args.batch_size, args.epochs))
-net = RxnNet(depth=args.layers, afeats_size=afeats_size, bfeats_size=bfeats_size,
-             hidden_size=args.hidden, binary_size=binary_size)
-logging.info("Total Parameters: {:,d}".format(sum([p.nelement() for p in net.parameters()])))
+#net = RxnNet(depth=args.layers, afeats_size=afeats_size, bfeats_size=bfeats_size,
+#             hidden_size=args.hidden, binary_size=binary_size)
 
 logging.info("{:-^80}".format("Trainer"))
 logging.info("Optimizer: {}  Beta1: {}  Beta2: {}".format("Adam", args.adam_beta1, args.adam_beta2))
@@ -89,10 +85,15 @@ logging.info("Learning rate: {}  Learning rate decay: {}  Steps between updates:
     args.lr, args.lr_decay, args.lr_steps))
 logging.info("Weight decay: {}  Gradient clipping: {}  Positive sample weighting: {}".format(
     args.adam_weight_decay, args.grad_clip, args.pos_weight))
-trainer = RxnTrainer(net, lr=args.lr, betas=(args.adam_beta1, args.adam_beta2), weight_decay=args.adam_weight_decay,
-                     with_cuda=args.with_cuda, cuda_devices=args.cuda_devices, log_freq=args.log_freq,
-                     grad_clip=args.grad_clip, pos_weight=args.pos_weight, lr_decay=args.lr_decay,
-                     lr_steps=args.lr_steps)
+trainer = RxnTrainer(hidden=args.hidden, depth=args.layers, afeats_size=afeats_size, bfeats_size=bfeats_size,
+                     bin_size=binary_size, lr=args.lr, betas=(args.adam_beta1, args.adam_beta2),
+                     weight_decay=args.adam_weight_decay, with_cuda=args.with_cuda, cuda_devices=args.cuda_devices,
+                     log_freq=args.log_freq, grad_clip=args.grad_clip, pos_weight=args.pos_weight,
+                     lr_decay=args.lr_decay, lr_steps=args.lr_steps)
+logging.info("{:-^80}".format("Model"))
+logging.info("Graph convolution layers: {}  Hidden size: {}".format(
+    args.layers, args.hidden, args.batch_size, args.epochs))
+logging.info("Total Parameters: {:,d}".format(sum([p.nelement() for p in trainer.model.parameters()])))
 
 for epoch in range(args.epochs):
     trainer.train_epoch(epoch, train_dataloader)

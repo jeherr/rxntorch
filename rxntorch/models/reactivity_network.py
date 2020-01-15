@@ -19,12 +19,16 @@ class ReactivityNet(nn.Module):
         self.attention = Attention(hidden_size, binary_size)
         self.reactivity_scoring = ReactivityScoring(hidden_size, binary_size)
 
-    def forward(self, fatoms, fbonds, atom_graph, bond_graph, rev_atom_graph, binary_feats, mask_neis, mask_atoms, sparse_idx):
-        atom_local_feats, bond_local_feats = self.wln(fatoms, fbonds, atom_graph, bond_graph, rev_atom_graph, mask_neis, mask_atoms)
-        binary_bonds = torch.zeros((binary_feats.shape[0], binary_feats.shape[1], binary_feats.shape[2], bond_local_feats.shape[-1]))
-        print(bond_graph[0])
-        print(bond_graph.shape)
-        print(bond_local_feats.shape)
+    def forward(self, fatoms, fbonds, binary_feats, atom_graph, bond_graph, rev_atom_graph, sparse_idx,
+                mask_neis, mask_atoms, binary_bonds):
+        atom_local_feats, bond_local_feats = self.wln(fatoms, fbonds, atom_graph, bond_graph, rev_atom_graph,
+                                                      mask_neis, mask_atoms)
+        scatter_idx = mask_neis.squeeze().nonzero()
+        gather_idx = torch.stack([scatter_idx[:,0], bond_graph[scatter_idx[:,0],scatter_idx[:,1],scatter_idx[:,2]]], dim=1)
+        scatter_idx[:,2] = atom_graph[scatter_idx[:,0],scatter_idx[:,1],scatter_idx[:,2]]
+        binary_bonds[scatter_idx[:,0],scatter_idx[:,1],scatter_idx[:,2]] = bond_local_feats[gather_idx[:,0],gather_idx[:,1]]
+        binary_feats = torch.cat([binary_feats, binary_bonds], dim=-1)
+
         local_pair, global_pair = self.attention(atom_local_feats, binary_feats, sparse_idx)
         pair_scores = self.reactivity_scoring(local_pair, global_pair, binary_feats, sparse_idx)
         sample_idxs = [torch.where(sparse_idx[:,0] == i)[0] for i in range(atom_local_feats.shape[0])]
@@ -35,13 +39,15 @@ class ReactivityNet(nn.Module):
 
 
 class ReactivityTrainer(nn.Module):
-    def __init__(self, rxn_net, lr=1e-4, betas=(0.9, 0.999), weight_decay=0.01, with_cuda=True,
-                 cuda_devices=None, log_freq=10, grad_clip=None, pos_weight=1.0, lr_decay=0.9,
-                 lr_steps=10000):
+    def __init__(self, hidden=300, depth=3, afeats_size=300, bfeats_size=6, bin_size=10, lr=1e-4, betas=(0.9, 0.999),
+                 weight_decay=0.01, with_cuda=True, cuda_devices=None, log_freq=10, grad_clip=None,
+                 pos_weight=1.0, lr_decay=0.9, lr_steps=10000):
         super(ReactivityTrainer, self).__init__()
         cuda_condition = torch.cuda.is_available() and with_cuda
+        self.hidden = hidden
         self.device = torch.device("cuda" if cuda_condition else "cpu")
-        self.model = rxn_net
+        self.model = ReactivityNet(depth=depth, afeats_size=afeats_size, bfeats_size=bfeats_size,
+             hidden_size=hidden, binary_size=bin_size)
         if cuda_condition and (torch.cuda.device_count() > 1):
             logging.info("Using {} GPUS".format(torch.cuda.device_count()))
             self.model = nn.DataParallel(self.model, device_ids=cuda_devices)
@@ -83,11 +89,12 @@ class ReactivityTrainer(nn.Module):
             mask_atoms = torch.unsqueeze(
                 data['n_atoms'].unsqueeze(-1) > torch.arange(0, max_n_atoms, dtype=torch.int32, device=self.device).view(1, -1),
                 -1)
+            binary_bonds = torch.zeros(data['binary_feats'].shape[:-1] + (self.hidden,), device=self.device)
 
             pair_scores, top_k, sample_idxs = self.model.forward(data['atom_feats'], data['bond_feats'],
-                                                    data['atom_graph'], data['bond_graph'], data['n_bonds'],
-                                                    data['n_atoms'], data['binary_feats'], mask_neis, mask_atoms,
-                                                    data['sparse_idx'])
+                                                    data['binary_feats'], data['atom_graph'], data['bond_graph'],
+                                                    data['rev_atom_graph'], data['sparse_idx'], mask_neis, mask_atoms,
+                                                    binary_bonds)
             
             if self.pos_weight is not None:
                 pos_weight = torch.where(data['bond_labels'] == 1.0,
