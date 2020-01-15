@@ -80,12 +80,14 @@ class ReactivityTrainer(nn.Module):
                 data['n_atoms'].unsqueeze(-1) > torch.arange(0, max_n_atoms, dtype=torch.int32, device=self.device).view(1, -1),
                 -1)
 
-            pair_scores, top_k, sample_idxs = self.model.forward(data['atom_feats'], data['bond_feats'], data['atom_graph'],
-                                                    data['bond_graph'], data['n_bonds'], data['n_atoms'],
-                                                    data['binary_feats'], mask_neis, mask_atoms, data['sparse_idx'])
+            pair_scores, top_k, sample_idxs = self.model.forward(data['atom_feats'], data['bond_feats'],
+                                                    data['atom_graph'], data['bond_graph'], data['n_bonds'],
+                                                    data['n_atoms'], data['binary_feats'], mask_neis, mask_atoms,
+                                                    data['sparse_idx'])
             if self.pos_weight is not None:
-                pos_weight = torch.where(bond_labels == 1.0, self.pos_weight * torch.ones_like(bond_labels),
-                                        torch.ones_like(bond_labels))
+                pos_weight = torch.where(data['bond_labels'] == 1.0,
+                                         self.pos_weight * torch.ones_like(data['bond_labels']),
+                                         torch.ones_like(data['bond_labels']))
             else:
                 pos_weight = None
             loss = F.binary_cross_entropy_with_logits(pair_scores, data['bond_labels'], reduction='none', pos_weight=pos_weight)
