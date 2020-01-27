@@ -1,4 +1,3 @@
-import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from .layers import Linear
@@ -19,4 +18,14 @@ class ReactivityScoring(nn.Module):
         return score
 
 
+class ReagentScoring(nn.Module):
+    def __init__(self, hidden_size):
+        super(ReagentScoring, self).__init__()
+        self.fclocal = Linear(hidden_size, hidden_size)
+        self.fcscore = Linear(hidden_size, 2)
+
+    def forward(self, local_pair):
+        pair_feats = F.relu(self.fclocal(local_pair))
+        score = self.fcscore(pair_feats)
+        return score
 

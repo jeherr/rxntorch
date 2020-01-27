@@ -21,3 +21,17 @@ class Attention(nn.Module):
         global_pair = global_pair1 + global_pair2
         local_pair = local_pair[sparse_idx[:,0],sparse_idx[:,1],sparse_idx[:,2]]
         return local_pair, global_pair
+
+
+class AggregateAttention(nn.Module):
+    def __init__(self, hidden_size):
+        super(AggregateAttention, self).__init__()
+        self.fca = Linear(hidden_size, hidden_size)
+        self.fcattention = Linear(hidden_size, 1)
+
+    def forward(self, local_feats):
+        attention_features = F.relu(self.fca(local_feats))
+        attention_score = torch.sigmoid(self.fcattention(attention_features))
+        molecule_feats = torch.sum(local_feats * attention_score, dim=2)
+        return molecule_feats
+

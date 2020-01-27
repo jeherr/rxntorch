@@ -2,12 +2,15 @@ from __future__ import print_function
 from __future__ import division
 
 import os
+import random
 import logging
+
 import rdkit.Chem as Chem
 from sklearn.preprocessing import LabelEncoder
 
 import torch
 from torch.utils.data import Dataset
+from torch.nn.utils.rnn import pad_sequence
 
 from .reaction import Rxn
 
@@ -127,13 +130,98 @@ class RxnGraphDataset(RxnDataset):
 
     def __getitem__(self, idx):
         rxn, edits, heavy_count = self.rxns[idx]
-        # react_smiles = '.'.join(filter(None, (rxn.reactants_smile, rxn.reagents_smile)))
-        react_smiles = rxn.reactants_smile
+        reactants = rxn.reactants
+        reagents = rxn.reagents
+        all_mols = reactants + reagents
+        idxs = [i for i in range(len(all_mols))]
+        reactant_labels = [0 for _ in range(len(reactants))]
+        reagent_labels = [1 for _ in range(len(reagents))]
+        all_labels = reactant_labels + reagent_labels
+        random.shuffle(idxs)
+        all_mols = [all_mols[idx_] for idx_ in idxs]
+        all_labels = torch.tensor([all_labels[idx_] for idx_ in idxs])
+
+        n_atoms = []
+        atom_idxs = []
+        atom_feats = []
+        bond_feats = []
+        atom_graphs = []
+        bond_graphs = []
+        n_bonds = []
+        n_mols = len(all_mols)
+        for i, mol in enumerate(all_mols):
+            rdmol = Chem.MolFromSmiles(mol.smile)
+            n_atoms.append(rdmol.GetNumAtoms())
+            atom_idx = [atom.GetIdx() for atom in rdmol.GetAtoms()]
+            atom_idxs.append(atom_idx)
+            atom_feats.append(self.get_atom_features(rdmol, atom_idx))
+            bond_feats.append(self.get_bond_features(rdmol))
+            atom_graph = torch.zeros((n_atoms[-1], self.max_nbonds), dtype=torch.int64)
+            bond_graph = torch.zeros((n_atoms[-1], self.max_nbonds), dtype=torch.int64)
+            n_bond = torch.zeros((n_atoms[-1],), dtype=torch.int32)
+
+            for bond in rdmol.GetBonds():
+                a1 = bond.GetBeginAtom().GetIdx()
+                a2 = bond.GetEndAtom().GetIdx()
+                idx = bond.GetIdx()
+                if n_bond[a1] == self.max_nbonds or n_bond[a2] == self.max_nbonds:
+                    raise Exception(rxn.reactants_smile)
+                atom_graph[a1, n_bond[a1]] = a2
+                atom_graph[a2, n_bond[a2]] = a1
+                bond_graph[a1, n_bond[a1]] = idx
+                bond_graph[a2, n_bond[a2]] = idx
+                n_bond[a1] += 1
+                n_bond[a2] += 1
+
+            atom_graphs.append(atom_graph)
+            bond_graphs.append(bond_graph)
+            n_bonds.append(n_bond)
+
+        print([atom_feat.shape for atom_feat in atom_feats])
+        print([bond_feat.shape for bond_feat in bond_feats])
+        print([bond_graph.shape for bond_graph in bond_graphs])
+        atom_mol_idx = torch.cat([torch.full((atom_feats[i].shape[0],), i) for i in range(n_mols)], dim=0)
+        bond_mol_idx = torch.cat([torch.full((bond_feats[i].shape[0],), i) for i in range(n_mols)], dim=0)
+        #atom_feats = pad_sequence(atom_feats, batch_first=True)
+        #bond_feats = pad_sequence(bond_feats, batch_first=True)
+        #atom_graphs = pad_sequence(atom_graphs, batch_first=True)
+        #bond_graphs = pad_sequence(bond_graphs, batch_first=True)
+        #n_bonds = pad_sequence(n_bonds, batch_first=True)
+        #n_atoms = torch.tensor(n_atoms, dtype=torch.int32)
+
+        output = {"atom_feats": atom_feats,
+                  "bond_feats": bond_feats,
+                  "atom_graphs": atom_graphs,
+                  "bond_graphs": bond_graphs,
+                  "n_mols": n_mols,
+                  "atom_mol_idx": atom_mol_idx,
+                  "bond_mol_idx": bond_mol_idx,
+                  "n_bonds": n_bonds,
+                  "n_atoms": n_atoms,
+                  "reagent_labels": all_labels}
+        return output
+
+    def __getitem__(self, idx):
+        rxn, edits, heavy_count = self.rxns[idx]
+        reactants = rxn.reactants
+        reagents = rxn.reagents
+        all_mols = reactants + reagents
+        idxs = [i for i in range(len(all_mols))]
+        reactant_labels = [0 for _ in range(len(reactants))]
+        reagent_labels = [1 for _ in range(len(reagents))]
+        all_labels = reactant_labels + reagent_labels
+        random.shuffle(idxs)
+        all_mols = [all_mols[idx_] for idx_ in idxs]
+        atom_counts = [mol.smile.count(":") for mol in all_mols]
+        mol_map = torch.cat([torch.full((atom_count,), i) for i, atom_count in enumerate(atom_counts)], dim=0)
+        print(mol_map)
+        all_labels = torch.tensor([all_labels[idx_] for idx_ in idxs])
+
+        react_smiles = '.'.join(filter(None, [mol.smile for mol in all_mols]))
         mol = Chem.MolFromSmiles(react_smiles)
         atom_idx = torch.tensor([atom.GetIdx() for atom in mol.GetAtoms()], dtype=torch.int64)
-        map_idx = [atom.GetIntProp('molAtomMapNumber') for atom in mol.GetAtoms()]
-        atom_map_idx = {map_idx[i]: atom_idx[i] for i in range(len(atom_idx))}
 
+        n_mols = len(all_mols)
         n_atoms = mol.GetNumAtoms()
         sparse_idx = []
         for i in range(n_atoms):
@@ -158,16 +246,15 @@ class RxnGraphDataset(RxnDataset):
             bond_graph[a2, n_bonds[a2]] = idx
             n_bonds[a1] += 1
             n_bonds[a2] += 1
-        bond_labels = self.get_bond_labels(edits, n_atoms, sparse_idx, atom_map_idx)
-        binary_feats = self.get_binary_features(react_smiles, n_atoms)
+
         output = {"atom_feats": atom_feats,
                   "bond_feats": bond_feats,
                   "atom_graph": atom_graph,
                   "bond_graph": bond_graph,
-                  "n_bonds": n_bonds,
+                  "n_mols": n_mols,
                   "n_atoms": n_atoms,
-                  "bond_labels": bond_labels,
-                  "binary_feats": binary_feats,
+                  "n_bonds": n_bonds,
+                  "reagent_labels": all_labels,
                   "sparse_idx": sparse_idx}
         return output
 

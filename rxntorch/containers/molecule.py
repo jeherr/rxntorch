@@ -16,6 +16,12 @@ class Mol(object):
     def __hash__(self):
         return hash(self.smile)
 
+    def __str__(self):
+        return self.smile
+
+    def __repr__(self):
+        return self.smile
+
     @property
     def canonical(self):
         return self.smile == Chem.MolToSmiles(Chem.MolFromSmiles(self.smile))
